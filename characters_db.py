@@ -2,6 +2,7 @@
 from models import General
 import random
 import maps_db 
+import equipment_db
 
 # ==========================================
 #   第一部分：語言中樞 (Dialogue System)
@@ -259,14 +260,28 @@ def generate_mass_generals(target_count=350):
         name, war, int_, ldr, loc = data
         gen = General(name, war, int_, ldr, location_id=loc)
         
-        # 史實武將數值與財力優勢
         gen.gold = random.randint(1200, 3000)
-        gen.level = random.randint(15, 35) # 起始等級較高
-        
-        # [關鍵] 分配台詞
+        gen.level = random.randint(15, 35)
         assign_dialogues(gen)
+
+        # === [新增] 逸品分發邏輯 ===
+        # 搜尋所有 owner_name 屬於該武將的逸品
+        my_artifacts = [
+            e for e in equipment_db.all_artifacts 
+            if e.owner_name == name
+        ]
+        
+        for art in my_artifacts:
+            # 強制裝備 (無視部位衝突，史實優先)
+            # 因為 equip 方法會把舊的換下來，我們直接調用
+            gen.equip(art)
+            # 確保逸品不在背包而在裝備欄，且不會被隨機覆蓋
+            # (equip 方法已經處理了屬性加成)
+        # =========================
         
         current_list.append(gen)
+    
+    # ... (後續補充隨機武將的代碼保持不變) ...
         
     # 2. 補充大眾臉武將
     needed = target_count - len(current_list)
