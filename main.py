@@ -8,33 +8,27 @@ import equipment_db
 import enemies_db
 import skills_db
 
-# --- 1. 系統初始化 & CSS 注入 (System Init & CSS Injection) ---
+# --- 1. 系統初始化 & CSS 注入 ---
 st.set_page_config(layout="wide", page_title="亂世模擬器")
 
-# 科學手段：注入 CSS 以強制壓縮 UI 空間 (已修正遮擋問題)
 st.markdown("""
     <style>
-        /* 1. 調整頂部留白 (修正為 3rem，避免被 Streamlit 頂部黑條遮擋) */
         .block-container {
             padding-top: 3rem !important;
             padding-bottom: 1rem !important;
         }
-        /* 2. 縮小標題字體 */
         h1 { font-size: 1.5rem !important; }
         h2 { font-size: 1.3rem !important; }
         h3 { font-size: 1.1rem !important; }
-        /* 3. 調整 Metrics (數值顯示) 的大小 */
         div[data-testid="stMetricValue"] {
             font-size: 1.1rem !important;
         }
         div[data-testid="stMetricLabel"] {
             font-size: 0.8rem !important;
         }
-        /* 4. 側邊欄緊湊化 */
         section[data-testid="stSidebar"] .block-container {
             padding-top: 2rem;
         }
-        /* 5. 按鈕緊湊化 */
         .stButton button {
             padding: 0.25rem 0.5rem;
             min-height: auto;
@@ -45,15 +39,14 @@ st.markdown("""
 # 狀態初始化
 if 'player' not in st.session_state:
     st.session_state.player = General("軒轅無名", 50, 50, 50)
-    # 新手福利技能
     starter_skill = skills_db.Skill("重斬", "attack", 15, 1.2, "新手專用劍技")
     st.session_state.player.skills.append(starter_skill)
 
 if 'current_location_id' not in st.session_state:
-    st.session_state.current_location_id = 51 # 預設在夷洲(台灣)，或改回 1 (許昌)
+    st.session_state.current_location_id = 51
 
 if 'logs' not in st.session_state:
-    st.session_state.logs = ["系統啟動：介面顯示層已修復。"]
+    st.session_state.logs = ["系統啟動：數學邏輯已修復。"]
 
 if 'combat_target' not in st.session_state:
     st.session_state.combat_target = None 
@@ -62,17 +55,17 @@ if 'combat_type' not in st.session_state:
 
 player = st.session_state.player
 
-# --- 2. 側邊欄：高密度儀表板 (Compact Dashboard) ---
+# --- 2. 側邊欄：儀表板 ---
 st.sidebar.markdown(f"### 👤 **{player.name}** (Lv.{player.level})")
 
-# 經驗條
-xp_percent = min(1.0, player.xp / player.max_xp)
+# 安全的經驗條計算
+safe_max_xp = max(1, player.max_xp) # 防止除以零
+xp_percent = min(1.0, player.xp / safe_max_xp)
 st.sidebar.progress(xp_percent)
 st.sidebar.caption(f"XP: {player.xp}/{player.max_xp} | 💰 金: {player.gold}")
 
 st.sidebar.markdown("---")
 
-# 屬性矩陣
 c1, c2, c3 = st.sidebar.columns(3)
 c1.metric("⚔️ 武", player.get_total_stat('war'))
 c2.metric("📜 智", player.get_total_stat('int_'))
@@ -80,7 +73,6 @@ c3.metric("🛡️ 統", player.get_total_stat('ldr'))
 
 st.sidebar.markdown("---")
 
-# 技能與裝備收納
 with st.sidebar.expander("🔥 技能 & 🎒 裝備", expanded=True):
     st.markdown("**[技能]**")
     if not player.skills:
@@ -100,55 +92,63 @@ with st.sidebar.expander("🔥 技能 & 🎒 裝備", expanded=True):
     if not has_gear:
         st.caption("無")
 
-# --- 3. 主畫面佈局 (Main Layout) ---
+# --- 3. 主畫面佈局 ---
 col_game, col_log = st.columns([7, 3])
 
-# === 右側：微縮日誌 ===
 with col_log:
     st.markdown("###### 📜 歷史紀錄")
     log_container = st.container(height=500)
     with log_container:
-        # 使用 HTML 渲染更小的字體
         log_html = "<br>".join([f"<span style='font-size:0.85rem; color:#DDD;'>• {log}</span>" for log in reversed(st.session_state.logs)])
         st.markdown(log_html, unsafe_allow_html=True)
 
-# === 左側：核心交互區 ===
 with col_game:
     
-    # ==========================================
     # [狀態 A]：回合制戰鬥模式
-    # ==========================================
     if st.session_state.combat_target:
         target = st.session_state.combat_target
         c_type = st.session_state.combat_type
         
-        # 初始化戰鬥
+        # --- [修復點 1] 強制數據完整性檢查 ---
+        # 如果因為任何原因 max_hp 為 0，強制重新初始化
+        if player.max_hp <= 0:
+            player.init_combat_stats(c_type)
+        if target.max_hp <= 0:
+            target.init_combat_stats(c_type)
+
+        # 初始化回合狀態
         if 'combat_turn' not in st.session_state:
             st.session_state.combat_turn = 'player'
             st.session_state.combat_log_list = []
+            # 這裡再次確保數值正確
             player.init_combat_stats(c_type)
             target.init_combat_stats(c_type)
 
         st.subheader(f"⚔️ VS {target.name}")
         
-        # 戰鬥日誌
         with st.container(height=150, border=True):
             for log in st.session_state.combat_log_list:
                 st.caption(log)
 
-        # 緊湊血條區
+        # --- [修復點 2] 安全血條渲染 ---
         c_p, c_vs, c_t = st.columns([4, 1, 4])
         with c_p:
             st.markdown(f"**{player.name}**")
-            st.progress(max(0.0, player.current_hp / player.max_hp), f"HP: {int(player.current_hp)}")
-            st.progress(max(0.0, player.current_mp / player.max_mp), f"MP: {int(player.current_mp)}")
+            # 使用 max(1, ...) 確保分母不為 0
+            safe_p_max = max(1, player.max_hp) 
+            st.progress(max(0.0, min(1.0, player.current_hp / safe_p_max)), f"HP: {int(player.current_hp)}")
+            st.progress(max(0.0, min(1.0, player.current_mp / 100)), f"MP: {int(player.current_mp)}")
         
         with c_vs:
             st.markdown("<div style='text-align: center; padding-top: 20px;'>⚡</div>", unsafe_allow_html=True)
 
         with c_t:
             st.markdown(f"**{target.name}**")
-            hp_pct = max(0.0, target.current_hp / target.max_hp)
+            
+            # 使用 max(1, ...) 確保分母不為 0
+            safe_t_max = max(1, target.max_hp)
+            hp_pct = max(0.0, min(1.0, target.current_hp / safe_t_max))
+            
             st.progress(hp_pct, f"HP: {int(hp_pct*100)}%")
             if hasattr(target, 'description'):
                 st.caption(f"{target.description}")
@@ -164,7 +164,6 @@ with col_game:
             del st.session_state.combat_turn
             del st.session_state.combat_log_list
             st.session_state.combat_target = None
-            
             if st.button("復活"): st.rerun()
 
         elif target.current_hp <= 0:
@@ -174,7 +173,6 @@ with col_game:
             player.gold += loot
             is_lvl = player.gain_xp(xp)
             
-            # 屬性微量成長
             player.grow("war" if c_type == "duel" else "int_", 1)
             target.affection = min(100, target.affection + 5)
             
@@ -185,10 +183,9 @@ with col_game:
             del st.session_state.combat_turn
             del st.session_state.combat_log_list
             st.session_state.combat_target = None
-            
             if st.button("離開"): st.rerun()
 
-        # 回合操作 (緊湊版)
+        # 玩家回合
         elif st.session_state.combat_turn == 'player':
             st.caption("你的回合")
             act_col1, act_col2 = st.columns([1, 2])
@@ -232,31 +229,27 @@ with col_game:
                                 st.session_state.combat_turn = 'enemy'
                                 st.rerun()
 
+        # 敵人回合
         elif st.session_state.combat_turn == 'enemy':
             with st.spinner("敵方行動..."):
                 time.sleep(0.5)
-                # 簡單 AI
                 dmg = max(1, int(target.get_total_stat("war") * 0.5 + random.randint(-5, 5)))
                 player.current_hp -= dmg
                 st.session_state.combat_log_list.append(f"敵人攻擊造成 {dmg} 傷害")
                 
-                # 回合結束回魔
                 player.current_mp = min(player.max_mp, player.current_mp + 5)
                 target.current_mp = min(target.max_mp, target.current_mp + 5)
                 
                 st.session_state.combat_turn = 'player'
                 st.rerun()
 
-    # ==========================================
-    # [狀態 B]：地圖探索模式
-    # ==========================================
+    # [狀態 B]：地圖探索
     else:
         loc_id = st.session_state.current_location_id
         city_data = maps_db.cities.get(loc_id, maps_db.cities[1]) 
         
         st.subheader(f"📍 {city_data['name']} ({city_data.get('region', '')})")
 
-        # --- 野外 UI ---
         if city_data.get("type") == "wild":
             st.warning("⚠️ 危險區域")
             cw1, cw2 = st.columns([1, 1])
@@ -289,12 +282,10 @@ with col_game:
                             player.equip(item)
                             st.rerun()
 
-        # --- 城市 UI ---
-        else:
+        else: # City
             t1, t2, t3 = st.tabs(["👥武將", "🛒市集", "🎒背包"])
             
             with t1:
-                # 只顯示當前地點武將
                 local_gens = [g for g in characters_db.all_generals if g.location_id == loc_id]
                 local_gens.sort(key=lambda x: x.war + x.int_, reverse=True)
                 
@@ -336,7 +327,7 @@ with col_game:
 
         st.divider()
         
-        # --- 緊湊導航系統 (Dynamic Navigation) ---
+        # 緊湊導航
         current_city = maps_db.cities.get(loc_id)
         neighbors = current_city.get("connections", [])
         
@@ -350,15 +341,8 @@ with col_game:
                 icon = "🌲" if nd['type']=='wild' else "🏰"
                 if nd.get('region') == '海外': icon = "⛵"
                 
-                label = f"{icon} {nd['name']}"
-                if cols_nav[idx % 4].button(label, key=f"mv_{nid}", use_container_width=True):
+                if cols_nav[idx % 4].button(f"{icon} {nd['name']}", key=f"mv_{nid}", use_container_width=True):
                     st.session_state.current_location_id = nid
-                    st.session_state.logs.append(f"移動：前往 {nd['name']}")
-                    
-                    # 觸發世界模擬 (NPC 移動)
-                    updates = characters_db.simulate_world_turn()
-                    if updates:
-                        for u in updates[:2]: # 只顯示少量世界情報
-                            st.session_state.logs.append(u)
-                    
+                    st.session_state.logs.append(f"前往 {nd['name']}")
+                    characters_db.simulate_world_turn()
                     st.rerun()
