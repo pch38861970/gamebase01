@@ -7,11 +7,9 @@ import equipment_db
 import enemies_db
 
 # --- 1. 系統初始化 (System Initialization) ---
-# 設定頁面佈局為寬屏模式，以便容納左右分欄
 st.set_page_config(layout="wide", page_title="亂世模擬器")
 
 if 'player' not in st.session_state:
-    # 名稱修改為 軒轅無名
     st.session_state.player = General("軒轅無名", 50, 50, 50)
 
 if 'current_location_id' not in st.session_state:
@@ -31,7 +29,7 @@ player = st.session_state.player
 st.sidebar.title("📊 角色狀態")
 st.sidebar.write(f"**{player.name}** (Lv.{player.level})")
 
-# 新增：經驗條顯示
+# 經驗條
 xp_percent = min(1.0, player.xp / player.max_xp)
 st.sidebar.progress(xp_percent, text=f"XP: {player.xp}/{player.max_xp}")
 
@@ -52,13 +50,12 @@ if not has_gear:
     st.sidebar.caption("無裝備")
 
 # --- 3. 主畫面佈局 (Main Layout Split) ---
-# 將畫面分為左側遊戲區 (7) 與 右側紀錄區 (3)
 col_game, col_log = st.columns([7, 3])
 
 # === 右側：歷史紀錄區 ===
 with col_log:
     st.subheader("📜 歷史紀錄")
-    log_container = st.container(height=600) # 設定固定高度並可捲動
+    log_container = st.container(height=600)
     with log_container:
         for log in reversed(st.session_state.logs):
             st.text(f"• {log}")
@@ -97,20 +94,14 @@ with col_game:
         with col_vs:
             st.markdown("<br><h2 style='text-align: center;'>VS</h2>", unsafe_allow_html=True)
         
+        # --- 修正點：這裡合併了正確的敵方顯示邏輯 ---
         with col_t:
             st.error(f"敵方：{target.name}")
+            if hasattr(target, 'description'):
+                st.caption(f"📝 {target.description}")
             st.progress(1.0, text=f"HP: {t_hp}")
             st.metric(f"總{attr_name}", t_stat)
-            
-        with col_t:
-        st.subheader("敵方")
-        st.error(f"{target.name}")
-        # --- 新增這行 ---
-        if hasattr(target, 'description'):
-            st.caption(f"📝 {target.description}")
-        # ----------------
-        st.progress(1.0, text=f"HP: {t_hp}")
-        st.metric(f"總{attr_name}", t_stat)
+        # ----------------------------------------
 
         st.divider()
         
@@ -122,17 +113,16 @@ with col_game:
             diff = p_stat - t_stat + variance
             
             if diff > 0:
-                # 移除氣球，保持嚴肅
                 st.success(f"勝利！你在{attr_name}上壓制了 {target.name}！")
                 
                 # 戰利品
                 loot_gold = random.randint(10, 50)
-                xp_gain = random.randint(20, 50) # 獲得經驗
+                xp_gain = random.randint(20, 50)
                 
                 player.gold += loot_gold
-                is_levelup = player.gain_xp(xp_gain) # 注入經驗
+                is_levelup = player.gain_xp(xp_gain)
                 
-                # 成長邏輯 (額外屬性)
+                # 成長邏輯
                 grow_attr = "war" if c_type == "duel" else "int_"
                 player.grow(grow_attr, 1)
                 
@@ -176,7 +166,7 @@ with col_game:
                     dice = random.randint(1, 100)
                     
                     if dice <= 40: # 遇敵
-                        enemy = enemies_db.create_enemy(level_scale=player.level * 0.8) # 敵人隨等級變強
+                        enemy = enemies_db.create_enemy(level_scale=player.level * 0.8)
                         st.session_state.combat_target = enemy
                         st.session_state.combat_type = "duel"
                         st.session_state.logs.append(f"遭遇：Lv.{enemy.level} {enemy.name} 出現！")
@@ -283,4 +273,3 @@ with col_game:
             st.session_state.current_location_id = 99
             st.session_state.logs.append("深入秦嶺荒野。")
             st.rerun()
-
