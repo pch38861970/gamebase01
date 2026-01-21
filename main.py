@@ -259,17 +259,38 @@ with col_game:
                             st.rerun()
 
         st.divider()
-        st.write("🗺️ 移動:")
-        nav1, nav2, nav3 = st.columns(3)
-        if nav1.button("🏰 前往 許昌", use_container_width=True):
-            st.session_state.current_location_id = 1
-            st.session_state.logs.append("移動至許昌。")
-            st.rerun()
-        if nav2.button("⚔️ 前往 官渡", use_container_width=True):
-            st.session_state.current_location_id = 2
-            st.session_state.logs.append("移動至官渡戰場。")
-            st.rerun()
-        if nav3.button("🌲 前往 秦嶺 (野外)", use_container_width=True):
-            st.session_state.current_location_id = 99
-            st.session_state.logs.append("深入秦嶺荒野。")
-            st.rerun()
+    # --- 動態全域導航系統 (Dynamic Navigation System) ---
+    # 科學原理：讀取當前節點的鄰接矩陣 (Adjacency Matrix)，自動渲染可行路徑
+    
+    current_city = maps_db.cities.get(st.session_state.current_location_id)
+    neighbors = current_city.get("connections", [])
+    
+    st.write(f"🗺️ 從 **{current_city['name']}** 出發，你可以前往:")
+    
+    if not neighbors:
+        st.error("此地似乎是條死路 (數據錯誤：無連接點)。")
+    else:
+        # 使用 Grid 佈局排列按鈕
+        cols = st.columns(len(neighbors))
+        
+        for idx, next_city_id in enumerate(neighbors):
+            next_city_data = maps_db.cities.get(next_city_id)
+            
+            # 防呆：確保目標城市存在於資料庫
+            if not next_city_data:
+                continue
+                
+            # 根據類型給予不同圖示
+            icon = "🏰" if next_city_data['type'] == 'city' else "🌲"
+            button_label = f"{icon} {next_city_data['name']}"
+            
+            # 動態生成按鈕
+            if cols[idx].button(button_label, key=f"nav_to_{next_city_id}", use_container_width=True):
+                st.session_state.current_location_id = next_city_id
+                
+                # 記錄移動日誌
+                move_msg = f"移動至 {next_city_data['name']} ({next_city_data['region']})。"
+                st.session_state.logs.append(move_msg)
+                
+                # 強制刷新
+                st.rerun()
