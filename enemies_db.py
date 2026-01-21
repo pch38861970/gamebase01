@@ -1,16 +1,12 @@
+# enemies_db.py
 import random
 from models import General
 import equipment_db
-import skills_db 
+import skills_db
 
 # --- 1. 多維基因庫 (Multidimensional Gene Pool) ---
-# (這部分的 prefixes, elements, species_list, mutations, ranks 資料保持不變，為了節省篇幅我這裡省略定義，
-#  請保留你原本代碼中的這些列表定義。若你沒有備份，請告訴我，我再貼一次完整的列表。)
 
-# ... (請保留 prefixes, elements, species_list, mutations, ranks 這些列表) ...
-# 如果你的檔案裡已經有這些列表，請保留。以下是邏輯修正部分：
-
-# 為了確保代碼完整性，這裡提供必要的列表定義頭部，請確保你的檔案有這些數據
+# 維度 A: 狀態前綴
 prefixes = [
     {"name": "飢餓的", "mod": 0.6, "desc": "瘦骨嶙峋，眼神瘋狂。"},
     {"name": "受傷的", "mod": 0.7, "desc": "身上帶著未癒合的傷口。"},
@@ -34,6 +30,7 @@ prefixes = [
     {"name": "傳說的", "mod": 3.0, "desc": "只存在於故事中的存在。"},
 ]
 
+# 維度 B: 元素屬性
 elements = [
     {"name": "無屬性", "color": "灰色", "bonus": "war", "desc": ""},
     {"name": "烈火", "color": "赤紅", "bonus": "war", "desc": "渾身燃燒著火焰，"},
@@ -45,6 +42,7 @@ elements = [
     {"name": "幽冥", "color": "幽藍", "bonus": "int_", "desc": "來自九幽地獄，"},
 ]
 
+# 維度 C: 物種
 species_list = [
     {"name": "黃巾賊", "w": 40, "i": 20, "l": 10},
     {"name": "山賊", "w": 50, "i": 30, "l": 30},
@@ -73,6 +71,7 @@ species_list = [
     {"name": "食人花", "w": 65, "i": 20, "l": 10},
 ]
 
+# 維度 D: 變異部位
 mutations = [
     {"name": "無變異", "desc": "", "bonus": 0},
     {"name": "雙頭", "desc": "長著兩顆頭顱，", "bonus": 10},
@@ -86,6 +85,7 @@ mutations = [
     {"name": "長尾", "desc": "拖著長長的尾巴，", "bonus": 5},
 ]
 
+# 維度 E: 階級
 ranks = [
     {"suffix": "囉嘍", "mod": 0.8},
     {"suffix": "戰士", "mod": 1.0},
@@ -139,7 +139,7 @@ def generate_enemy_database(count=500):
             "ldr": ldr,
             "gold_mod": prefix['mod'] * rank['mod'] * (1.5 if element['name'] != "無屬性" else 1.0),
             "description": full_desc,
-            "rank_mod": rank['mod'] # 用於計算經驗值倍率
+            "rank_mod": rank['mod'] 
         }
         database.append(enemy_data)
         
@@ -147,16 +147,16 @@ def generate_enemy_database(count=500):
 
 all_enemies_blueprints = generate_enemy_database(1000) 
 
-# --- 3. 實例化接口 (修正版：加入等級賦予) ---
+# --- 3. 實例化接口 ---
 
 def create_enemy(player_level=1):
     blueprint = random.choice(all_enemies_blueprints)
     
-    # 科學計算：敵人等級浮動 (玩家等級 -2 到 +3 之間)
+    # 敵人等級浮動 (玩家等級 -2 到 +3)
     level_variance = random.randint(-2, 3)
     enemy_level = max(1, player_level + level_variance)
     
-    # 等級係數：每級提升 10% 屬性
+    # 等級係數
     level_scale = 1.0 + (enemy_level * 0.1)
     
     final_war = int(blueprint['war'] * level_scale)
@@ -165,14 +165,13 @@ def create_enemy(player_level=1):
     
     enemy = General(blueprint['name'], final_war, final_int, final_ldr)
     
-    # [修正點] 明確賦予等級，讓 UI 可以顯示
+    # [關鍵] 賦予等級與描述
     enemy.level = enemy_level
     enemy.description = blueprint['description']
     
-    # 金錢與裝備
     enemy.gold = int(random.randint(20, 80) * blueprint['gold_mod'] * level_scale)
     
-    # 裝備率
+    # 裝備
     total_stats = final_war + final_int + final_ldr
     equip_chance = min(0.9, total_stats / 500)
     
@@ -180,15 +179,22 @@ def create_enemy(player_level=1):
         gear = random.choice(equipment_db.common_gear)
         enemy.equip(gear)
         
-    # [新增] 技能賦予
-    num_skills = random.randint(1, 3)
-    for _ in range(num_skills):
-        s = skills_db.get_random_skill()
-        if s not in enemy.skills:
+    # [關鍵] 技能賦予
+    # 根據名字強度給技能
+    skill_count = 1
+    if "強壯" in enemy.name or "狂暴" in enemy.name: skill_count += 1
+    if "統領" in enemy.name or "魔王" in enemy.name: skill_count += 2
+    
+    for _ in range(skill_count):
+        s = skills_db.generate_random_skill()
+        if s.name not in [x.name for x in enemy.skills]:
             enemy.skills.append(s)
             
     # Boss 必殺技
     if "統領" in enemy.name or "魔王" in enemy.name:
-        enemy.skills.append(random.choice(skills_db.boss_skills))
+        if random.random() < 0.5: # 50% 機率有大招
+            # 這裡簡單隨機選一個 VIP 技能當大招
+            boss_skill = random.choice(list(skills_db.vip_skills_data.values()))
+            enemy.skills.append(boss_skill)
         
     return enemy
