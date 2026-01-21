@@ -1,16 +1,15 @@
 # models.py
-# 核心生物與物品模型
 
-class General(Entity):
-    def __init__(self, name, war, int_, ldr, affection=0, location_id=1):
-        super().__init__(name, war, int_, ldr)
-        self.affection = affection
-        self.location_id = location_id # 新增：地理位置感知
-        self.gold = 1000
-        self.inventory = []
-        self.equipment_slots = {
-            "hat": None, "armor": None, "shoe": None, "weapon": None, "artifact": None
-        }
+# --- 1. 基礎生物 (The Base) ---
+class Entity:
+    def __init__(self, name, war, int_, ldr):
+        self.name = name
+        self.war = war
+        self.int_ = int_
+        self.ldr = ldr
+        self.level = 1
+        self.xp = 0            # 當前經驗
+        self.max_xp = 100      # 升級所需經驗
 
     def grow(self, attr, value):
         if hasattr(self, attr):
@@ -20,11 +19,12 @@ class General(Entity):
         """獲取經驗並檢查升級"""
         self.xp += amount
         # 循環檢查是否升級 (防止一次獲得大量經驗連升數級)
+        leveled_up = False
         while self.xp >= self.max_xp:
             self.xp -= self.max_xp
             self.level_up()
-            return True # 回傳 True 表示升級了
-        return False
+            leveled_up = True
+        return leveled_up
 
     def level_up(self):
         """升級邏輯：全屬性提升，經驗槽擴大"""
@@ -34,10 +34,13 @@ class General(Entity):
         self.ldr += 2
         self.max_xp = int(self.max_xp * 1.2) # 下一級需求增加 20%
 
+# --- 2. 擴充生物 (The General) ---
+# 必須定義在 Entity 之後
 class General(Entity):
-    def __init__(self, name, war, int_, ldr, affection=0):
+    def __init__(self, name, war, int_, ldr, affection=0, location_id=1):
         super().__init__(name, war, int_, ldr)
         self.affection = affection
+        self.location_id = location_id  # 地理位置感知
         self.gold = 1000
         self.inventory = []
         
@@ -83,7 +86,7 @@ class General(Entity):
     def max_hp_debate(self):
         return (self.get_total_stat("int_") * 10) + (self.get_total_stat("ldr") * 5)
 
-# 互動邏輯保留
+# --- 3. 互動邏輯 ---
 def interact(player, general, method):
     success = False
     if method == "duel" and player.war > general.war:
