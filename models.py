@@ -8,8 +8,28 @@ class Entity:
         self.int_ = int_
         self.ldr = ldr
         self.level = 1
-        self.xp = 0            # 當前經驗
-        self.max_xp = 100      # 升級所需經驗
+        self.xp = 0
+        self.max_xp = 100
+        
+        # [新增] 戰鬥屬性
+        self.skills = []   # 技能列表
+        self.current_hp = 0 # 當前血量 (戰鬥用)
+        self.max_hp = 0     # 最大血量
+        self.current_mp = 0 # 當前氣力
+        self.max_mp = 100   # 最大氣力 (暫定固定，可隨智力成長)
+
+    # [新增] 初始化戰鬥狀態 (每次戰鬥前呼叫)
+    def init_combat_stats(self, type_="duel"):
+        if type_ == "duel":
+            self.max_hp = (self.get_total_stat("war") * 10) + (self.get_total_stat("ldr") * 5)
+        else:
+            self.max_hp = (self.get_total_stat("int_") * 10) + (self.get_total_stat("ldr") * 5)
+        
+        self.current_hp = self.max_hp
+        self.current_mp = 100 # 初始滿氣
+        self.max_mp = 100
+
+    # ... (保留 grow, gain_xp, level_up) ...
 
     def grow(self, attr, value):
         if hasattr(self, attr):
@@ -85,6 +105,15 @@ class General(Entity):
     @property
     def max_hp_debate(self):
         return (self.get_total_stat("int_") * 10) + (self.get_total_stat("ldr") * 5)
+
+class Skill:
+    """技能的定義"""
+    def __init__(self, name, type_, cost, power, desc):
+        self.name = name
+        self.type_ = type_ # 'attack', 'heal', 'buff'
+        self.cost = cost   # 消耗 MP
+        self.power = power # 威力係數
+        self.desc = desc
 
 # --- 3. 互動邏輯 ---
 def interact(player, general, method):
