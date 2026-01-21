@@ -62,14 +62,18 @@ st.markdown("""
 # 狀態初始化
 if 'player' not in st.session_state:
     st.session_state.player = General("軒轅無名", 50, 50, 50)
-    starter_skill = skills_db.Skill("重斬", "attack", 15, 1.2, "新手專用劍技")
+    
+    # [修正點] 更新為符合新 Skill 類別的格式
+    # 格式: Skill(name, cost, scale_attr, multiplier, effect, desc)
+    starter_skill = skills_db.Skill("重斬", 15, "war", 1.2, "normal", "新手專用劍技")
+    
     st.session_state.player.skills.append(starter_skill)
 
 if 'current_location_id' not in st.session_state:
     st.session_state.current_location_id = 51
 
 if 'logs' not in st.session_state:
-    st.session_state.logs = ["系統啟動：戰術分析儀表板已修復。"]
+    st.session_state.logs = ["系統啟動：技能核心參數已校正。"]
 
 if 'combat_target' not in st.session_state:
     st.session_state.combat_target = None 
@@ -104,7 +108,6 @@ with st.sidebar.expander("🔥 技能 & 🎒 裝備", expanded=True):
     has_gear = False
     for slot, item in player.equipment_slots.items():
         if item:
-            # 側邊欄簡單顯示顏色
             color = "#FFD700" if item.is_artifact else "#A0A0A0" 
             icon = "🌟" if item.is_artifact else "🛡️"
             st.markdown(f"<span style='color:{color}'>{icon} [{slot}] {item.name}</span>", unsafe_allow_html=True)
@@ -388,13 +391,11 @@ with col_game:
                             st.markdown(f"**{gen.name}** (Lv.{gen.level})")
                             st.caption(f"武{gen.get_total_stat('war')} / 智{gen.get_total_stat('int_')} | 好感: {gen.affection}")
                             
-                            # === [修復點] 裝備顯示與 Tooltip 迴圈 ===
                             gear_html_list = []
                             for slot, item in gen.equipment_slots.items():
                                 if item:
                                     attr_map = {"war": "武力", "int_": "智力", "ldr": "統御"}
                                     attr_name = attr_map.get(item.attr, item.attr)
-                                    # 構建 HTML Tooltip
                                     tooltip = f"【{item.name}】&#10;類型: {item.type_}&#10;屬性: {attr_name} +{item.value}&#10;說明: {item.description}"
                                     
                                     if item.is_artifact:
@@ -407,7 +408,6 @@ with col_game:
                             if gear_html_list:
                                 full_html = "&nbsp;&nbsp;".join(gear_html_list)
                                 st.markdown(f"<div class='gear-row'>{full_html}</div>", unsafe_allow_html=True)
-                            # ======================================
 
                             if gen.name in st.session_state.last_talk:
                                 st.markdown(f"<div class='chat-bubble'>“{st.session_state.last_talk[gen.name]}”</div>", unsafe_allow_html=True)
@@ -437,20 +437,46 @@ with col_game:
                                 st.rerun()
 
             with t2:
-                st.caption(f"金: {player.gold}")
-                cols = st.columns(3)
-                for i, item in enumerate(equipment_db.common_gear[:6]):
-                    with cols[i%3]:
-                        st.markdown(f"**{item.name}**")
-                        st.caption(f"💰{item.price}")
-                        if st.button("買", key=f"b_{i}"):
-                            if player.gold >= item.price:
-                                player.gold -= item.price
-                                player.inventory.append(item)
-                                st.success("已購")
-                                st.rerun()
-                            else:
-                                st.error("沒錢")
+                st.info(f"持有資金: {player.gold}")
+                
+                # [新增] 買賣分頁
+                buy_tab, sell_tab = st.tabs(["💰 購買裝備", "⚖️ 出售戰利品"])
+                
+                with buy_tab:
+                    cols = st.columns(3)
+                    for i, item in enumerate(equipment_db.common_gear[:6]):
+                        with cols[i%3]:
+                            st.markdown(f"**{item.name}**")
+                            st.caption(f"💰{item.price}")
+                            if st.button("買", key=f"b_{i}"):
+                                if player.gold >= item.price:
+                                    player.gold -= item.price
+                                    player.inventory.append(item)
+                                    st.success("已購")
+                                    st.rerun()
+                                else:
+                                    st.error("沒錢")
+                                    
+                with sell_tab:
+                    if not player.inventory:
+                        st.caption("背包空空如也。")
+                    else:
+                        st.caption("商家回收價: 50% 原價")
+                        for i, item in enumerate(player.inventory):
+                            c1, c2, c3 = st.columns([3, 1, 1])
+                            with c1:
+                                color = "#FFD700" if item.is_artifact else "#A0A0A0"
+                                st.markdown(f"<span style='color:{color}'>{item.name}</span>", unsafe_allow_html=True)
+                            with c2:
+                                sell_price = int(item.price * 0.5)
+                                st.write(f"💰 {sell_price}")
+                            with c3:
+                                if st.button("賣出", key=f"sell_{i}"):
+                                    player.gold += sell_price
+                                    player.inventory.pop(i)
+                                    st.toast(f"獲得 {sell_price} 金幣", icon="💰")
+                                    st.rerun()
+
             with t3:
                 if not player.inventory: st.caption("空")
                 for i, item in enumerate(player.inventory):
