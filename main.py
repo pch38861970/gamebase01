@@ -62,18 +62,15 @@ st.markdown("""
 # 狀態初始化
 if 'player' not in st.session_state:
     st.session_state.player = General("軒轅無名", 50, 50, 50)
-    
-    # [修正點] 更新為符合新 Skill 類別的格式
-    # 格式: Skill(name, cost, scale_attr, multiplier, effect, desc)
+    # 初始技能 (使用新格式)
     starter_skill = skills_db.Skill("重斬", 15, "war", 1.2, "normal", "新手專用劍技")
-    
     st.session_state.player.skills.append(starter_skill)
 
 if 'current_location_id' not in st.session_state:
     st.session_state.current_location_id = 51
 
 if 'logs' not in st.session_state:
-    st.session_state.logs = ["系統啟動：技能核心參數已校正。"]
+    st.session_state.logs = ["系統啟動：菁英怪獎勵機制已實裝。"]
 
 if 'combat_target' not in st.session_state:
     st.session_state.combat_target = None 
@@ -233,15 +230,37 @@ with col_game:
 
         elif target.current_hp <= 0:
             st.success("🏆 勝利")
-            loot = random.randint(20, 80) + getattr(target, 'gold', 0)
-            level_diff = target_lvl - player.level if isinstance(target_lvl, int) else 0
-            xp_gain = max(10, 50 + (level_diff * 10))
             
-            player.gold += loot
-            is_lvl = player.gain_xp(xp_gain)
+            # --- 1. 基礎獎勵計算 ---
+            target_lvl = getattr(target, 'level', 1)
+            base_gold = random.randint(20, 80) + getattr(target, 'gold', 0)
+            level_diff = max(0, target_lvl - player.level)
+            base_xp = max(10, 50 + (level_diff * 10))
+            
+            # --- 2. 菁英怪獎勵加成 (New Logic) ---
+            is_elite = getattr(target, 'is_elite', False)
+            bonus_msg = ""
+            
+            if is_elite:
+                base_gold *= 3        # 金錢 3 倍
+                base_xp = int(base_xp * 2.5) # 經驗 2.5 倍
+                bonus_msg = " 【💀強敵擊殺獎勵！】"
+                st.balloons() # 放氣球
+                
+                # 菁英怪 50% 機率掉裝備
+                if random.random() < 0.5:
+                    loot = equipment_db.get_random_loot(drop_rate=0.1) # 10% 出逸品
+                    player.inventory.append(loot)
+                    loot_color = ":orange" if loot.is_artifact else ""
+                    bonus_msg += f" 掉落: {loot_color}[{loot.name}]"
+
+            # --- 3. 結算應用 ---
+            player.gold += base_gold
+            is_lvl = player.gain_xp(base_xp)
             player.grow("war" if c_type == "duel" else "int_", 1)
             if hasattr(target, 'affection'): target.affection = min(100, target.affection + 5)
             
+            # --- 4. 技能學習 ---
             learn_msg = ""
             if len(player.skills) < 5 and hasattr(target, 'skills') and target.skills:
                 if random.random() < 0.2:
@@ -257,7 +276,7 @@ with col_game:
                             learn_msg = f" 【習得技能: {new_skill.name}】"
                             st.toast(f"你學會了 {new_skill.name}！", icon="🎓")
 
-            # 掠奪逸品
+            # --- 5. 掠奪裝備 (針對武將) ---
             enemy_artifacts = []
             for slot, item in target.equipment_slots.items():
                 if item and item.is_artifact:
@@ -271,7 +290,7 @@ with col_game:
                 st.toast(f"奪取了 {target.name} 的 {stolen_item.name}！", icon="😈")
                 stolen_msg = f" 【奪取: {stolen_item.name}】"
 
-            msg = f"勝 {target.name}: +{loot}金 +{xp_gain}XP{learn_msg}{stolen_msg}"
+            msg = f"勝 {target.name}: +{base_gold}金 +{base_xp}XP{bonus_msg}{learn_msg}{stolen_msg}"
             if is_lvl: msg += " [升級!]"
             st.session_state.logs.append(msg)
             
@@ -439,7 +458,7 @@ with col_game:
             with t2:
                 st.info(f"持有資金: {player.gold}")
                 
-                # [新增] 買賣分頁
+                # 買賣分頁
                 buy_tab, sell_tab = st.tabs(["💰 購買裝備", "⚖️ 出售戰利品"])
                 
                 with buy_tab:
