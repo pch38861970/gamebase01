@@ -55,21 +55,19 @@ class Entity:
         self.max_xp = int(self.max_xp * 1.2) # 下一級需求增加 20%
 
 # --- 2. 擴充生物 (The General) ---
-# 必須定義在 Entity 之後
+# models.py (General 類別 __init__ 更新)
 class General(Entity):
     def __init__(self, name, war, int_, ldr, affection=0, location_id=1):
         super().__init__(name, war, int_, ldr)
         self.affection = affection
-        self.location_id = location_id  # 地理位置感知
+        self.location_id = location_id
         self.gold = 1000
         self.inventory = []
+        # [新增] 對話資料庫
+        self.dialogues = ["......"] 
         
         self.equipment_slots = {
-            "hat": None,
-            "armor": None,
-            "shoe": None,
-            "weapon": None,
-            "artifact": None
+            "hat": None, "armor": None, "shoe": None, "weapon": None, "artifact": None
         }
 
     def equip(self, item):
