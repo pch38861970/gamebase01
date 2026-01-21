@@ -56,13 +56,14 @@ st.markdown("""
         .dmg-text { color: #FF4B4B; font-weight: bold; }
         .heal-text { color: #00CC00; font-weight: bold; }
         .skill-text { color: #FFA500; font-weight: bold; }
+        .turn-tag { color: #888888; font-size: 0.9em; margin-right: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
 # 狀態初始化
 if 'player' not in st.session_state:
     st.session_state.player = General("軒轅無名", 50, 50, 50)
-    # 初始技能 (使用新格式)
+    # 初始技能
     starter_skill = skills_db.Skill("重斬", 15, "war", 1.2, "normal", "新手專用劍技")
     st.session_state.player.skills.append(starter_skill)
 
@@ -70,7 +71,7 @@ if 'current_location_id' not in st.session_state:
     st.session_state.current_location_id = 51
 
 if 'logs' not in st.session_state:
-    st.session_state.logs = ["系統啟動：菁英怪獎勵機制已實裝。"]
+    st.session_state.logs = ["系統啟動：戰鬥介面優化補丁已載入。"]
 
 if 'combat_target' not in st.session_state:
     st.session_state.combat_target = None 
@@ -154,7 +155,8 @@ def execute_turn(attacker, defender, skill=None):
         log_msg = f"{attacker.name} 發動攻擊。"
 
     if damage > 0:
-        defender.current_hp -= damage
+        # [修正] 使用 max(0, ...) 確保血量不為負數
+        defender.current_hp = max(0, defender.current_hp - damage)
         log_msg += f" 造成 <span class='dmg-text'>{damage}</span> 點傷害。"
         
     return log_msg, damage
@@ -178,9 +180,12 @@ with col_game:
         
         if player.max_hp <= 0: player.init_combat_stats(c_type)
         if target.max_hp <= 0: target.init_combat_stats(c_type)
+        
+        # 初始化戰鬥狀態與 [回合計數器]
         if 'combat_turn' not in st.session_state:
             st.session_state.combat_turn = 'player'
             st.session_state.combat_log_list = []
+            st.session_state.turn_count = 1 # [新增] 回合計數
             player.init_combat_stats(c_type)
             target.init_combat_stats(c_type)
 
@@ -223,44 +228,42 @@ with col_game:
             st.error("💔 敗北")
             st.session_state.logs.append(f"被 {target.name} 擊敗。")
             player.gold = int(player.gold * 0.9)
+            
+            # 清理
             del st.session_state.combat_turn
             del st.session_state.combat_log_list
+            if 'turn_count' in st.session_state: del st.session_state.turn_count
             st.session_state.combat_target = None
+            
             if st.button("復活"): st.rerun()
 
         elif target.current_hp <= 0:
             st.success("🏆 勝利")
             
-            # --- 1. 基礎獎勵計算 ---
             target_lvl = getattr(target, 'level', 1)
             base_gold = random.randint(20, 80) + getattr(target, 'gold', 0)
             level_diff = max(0, target_lvl - player.level)
             base_xp = max(10, 50 + (level_diff * 10))
             
-            # --- 2. 菁英怪獎勵加成 (New Logic) ---
             is_elite = getattr(target, 'is_elite', False)
             bonus_msg = ""
             
             if is_elite:
-                base_gold *= 3        # 金錢 3 倍
-                base_xp = int(base_xp * 2.5) # 經驗 2.5 倍
+                base_gold *= 3
+                base_xp = int(base_xp * 2.5)
                 bonus_msg = " 【💀強敵擊殺獎勵！】"
-                st.balloons() # 放氣球
-                
-                # 菁英怪 50% 機率掉裝備
+                st.balloons()
                 if random.random() < 0.5:
-                    loot = equipment_db.get_random_loot(drop_rate=0.1) # 10% 出逸品
+                    loot = equipment_db.get_random_loot(drop_rate=0.1)
                     player.inventory.append(loot)
                     loot_color = ":orange" if loot.is_artifact else ""
                     bonus_msg += f" 掉落: {loot_color}[{loot.name}]"
 
-            # --- 3. 結算應用 ---
             player.gold += base_gold
             is_lvl = player.gain_xp(base_xp)
             player.grow("war" if c_type == "duel" else "int_", 1)
             if hasattr(target, 'affection'): target.affection = min(100, target.affection + 5)
             
-            # --- 4. 技能學習 ---
             learn_msg = ""
             if len(player.skills) < 5 and hasattr(target, 'skills') and target.skills:
                 if random.random() < 0.2:
@@ -276,7 +279,6 @@ with col_game:
                             learn_msg = f" 【習得技能: {new_skill.name}】"
                             st.toast(f"你學會了 {new_skill.name}！", icon="🎓")
 
-            # --- 5. 掠奪裝備 (針對武將) ---
             enemy_artifacts = []
             for slot, item in target.equipment_slots.items():
                 if item and item.is_artifact:
@@ -294,23 +296,31 @@ with col_game:
             if is_lvl: msg += " [升級!]"
             st.session_state.logs.append(msg)
             
+            # 清理
             del st.session_state.combat_turn
             del st.session_state.combat_log_list
+            if 'turn_count' in st.session_state: del st.session_state.turn_count
             st.session_state.combat_target = None
+            
             if st.button("離開"): st.rerun()
 
         # 玩家回合
         elif st.session_state.combat_turn == 'player':
             st.caption("你的回合")
             act_col1, act_col2 = st.columns([1, 2])
+            
+            # [新增] 顯示回合數
+            turn_display = f"<span class='turn-tag'>[第 {st.session_state.turn_count} 回合]</span>"
+            
             with act_col1:
                 if st.button("⚔️ 普通攻擊", use_container_width=True, disabled=player.status.get("stunned")):
                     log, _ = execute_turn(player, target, None)
-                    st.session_state.combat_log_list.append(log)
+                    st.session_state.combat_log_list.append(f"{turn_display} {log}")
                     st.session_state.combat_turn = 'enemy'
                     st.rerun()
                 if st.button("🏳️ 撤退", use_container_width=True):
                     st.session_state.combat_target = None
+                    if 'turn_count' in st.session_state: del st.session_state.turn_count
                     st.session_state.logs.append("逃離戰場")
                     st.rerun()
             with act_col2:
@@ -327,7 +337,7 @@ with col_game:
                             
                             if st.button(label, key=f"s_{idx}", disabled=not can_cast or is_stunned, use_container_width=True):
                                 log, _ = execute_turn(player, target, skill)
-                                st.session_state.combat_log_list.append(log)
+                                st.session_state.combat_log_list.append(f"{turn_display} {log}")
                                 st.session_state.combat_turn = 'enemy'
                                 st.rerun()
 
@@ -335,6 +345,8 @@ with col_game:
         elif st.session_state.combat_turn == 'enemy':
             with st.spinner(f"{target.name} 正在行動..."):
                 time.sleep(0.6)
+                turn_display = f"<span class='turn-tag'>[第 {st.session_state.turn_count} 回合]</span>"
+                
                 chosen_skill = None
                 if hasattr(target, 'skills') and target.skills and target.current_mp > 20:
                     potential_skills = [s for s in target.skills if target.current_mp >= s.cost]
@@ -342,10 +354,14 @@ with col_game:
                         chosen_skill = random.choice(potential_skills)
                 
                 log, _ = execute_turn(target, player, chosen_skill)
-                st.session_state.combat_log_list.append(log)
+                st.session_state.combat_log_list.append(f"{turn_display} {log}")
                 
                 player.current_mp = min(player.max_mp, player.current_mp + 5)
                 target.current_mp = min(target.max_mp, target.current_mp + 5)
+                
+                # [新增] 回合數+1
+                st.session_state.turn_count += 1
+                
                 st.session_state.combat_turn = 'player'
                 st.rerun()
 
