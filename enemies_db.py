@@ -1,6 +1,7 @@
 import random
 from models import General
 import equipment_db
+import skills_db
 
 # --- 1. 多維基因庫 (Multidimensional Gene Pool) ---
 
