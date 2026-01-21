@@ -83,6 +83,28 @@ class General(Entity):
             self.equipment_slots[slot_name] = None
             return f"已卸下 {item.name}。"
         return "該部位無裝備。"
+        # models.py (在 General 類別內新增)
+
+    # ... (保留之前的 __init__ 和 equip) ...
+
+    def get_total_stat(self, stat_name):
+        """計算總屬性：基礎值 + 裝備加成"""
+        base = getattr(self, stat_name)
+        bonus = 0
+        for item in self.equipment_slots.values():
+            if item and item.attr == stat_name:
+                bonus += item.value
+        return base + bonus
+
+    @property
+    def max_hp_duel(self):
+        """武力決鬥的生命值 = 武力 * 10 + 統御 * 5"""
+        return (self.get_total_stat("war") * 10) + (self.get_total_stat("ldr") * 5)
+
+    @property
+    def max_hp_debate(self):
+        """舌戰的生命值 = 智力 * 10 + 統御 * 5"""
+        return (self.get_total_stat("int_") * 10) + (self.get_total_stat("ldr") * 5)
 
 # interact 函數保持不變...
 def interact(player, general, method):
