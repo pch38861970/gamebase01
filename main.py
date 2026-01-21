@@ -101,6 +101,16 @@ with col_game:
             st.error(f"敵方：{target.name}")
             st.progress(1.0, text=f"HP: {t_hp}")
             st.metric(f"總{attr_name}", t_stat)
+            
+        with col_t:
+        st.subheader("敵方")
+        st.error(f"{target.name}")
+        # --- 新增這行 ---
+        if hasattr(target, 'description'):
+            st.caption(f"📝 {target.description}")
+        # ----------------
+        st.progress(1.0, text=f"HP: {t_hp}")
+        st.metric(f"總{attr_name}", t_stat)
 
         st.divider()
         
@@ -273,3 +283,4 @@ with col_game:
             st.session_state.current_location_id = 99
             st.session_state.logs.append("深入秦嶺荒野。")
             st.rerun()
+
