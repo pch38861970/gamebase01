@@ -186,4 +186,17 @@ def create_enemy(level_scale=1.0):
         gear = random.choice(equipment_db.common_gear)
         enemy.equip(gear)
         
+    # [新增] 技能賦予邏輯
+    # 每個敵人隨機獲得 1-2 個技能
+    num_skills = random.randint(1, 2)
+    for _ in range(num_skills):
+        s = skills_db.get_random_skill()
+        # 避免重複學習
+        if s not in enemy.skills:
+            enemy.skills.append(s)
+
+    # BOSS 級怪物追加必殺技
+    if "統領" in enemy.name or "魔王" in enemy.name:
+        enemy.skills.append(random.choice(skills_db.boss_skills))
+
     return enemy
