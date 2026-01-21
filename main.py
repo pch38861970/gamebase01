@@ -2,10 +2,11 @@ import streamlit as st
 from models import General, interact
 import characters_db
 import maps_db
+import equipment_db
 
-# --- 1. 初始化狀態 (Session State Initialization) ---
-# 科學原理：這是大腦的海馬體，負責將短期記憶暫存，避免頁面刷新後數據遺失。
+# --- 1. 初始化狀態 ---
 if 'player' not in st.session_state:
+    # 注意：這裡會使用新定義的 General 類別，包含 gold 和 slots
     st.session_state.player = General("主公", 50, 50, 50)
 
 if 'current_location_id' not in st.session_state:
@@ -14,88 +15,95 @@ if 'current_location_id' not in st.session_state:
 if 'logs' not in st.session_state:
     st.session_state.logs = ["遊戲開始。"]
 
-# --- 2. 側邊欄：角色資訊 (Dashboard) ---
-st.sidebar.title("角色狀態")
 player = st.session_state.player
-st.sidebar.write(f"姓名: {player.name}")
-st.sidebar.write(f"武力: {player.war} | 智力: {player.int_}")
-st.sidebar.write(f"統御: {player.ldr}")
-st.sidebar.write(f"好感度滿級武將: {len([g for g in characters_db.all_generals if g.affection >= 100])}")
 
-# --- 3. 主畫面：地圖與探索 ---
+# --- 2. 側邊欄：詳細狀態 (Dashboard) ---
+st.sidebar.title("📊 角色狀態")
+st.sidebar.write(f"**{player.name}**")
+st.sidebar.write(f"💰 金錢: {player.gold}")
+st.sidebar.divider()
+st.sidebar.write(f"⚔️ 武力: {player.war:.1f}")
+st.sidebar.write(f"📜 智力: {player.int_:.1f}")
+st.sidebar.write(f"🛡️ 統御: {player.ldr:.1f}")
+st.sidebar.divider()
+st.sidebar.subheader("身上裝備")
+# 遍歷並顯示當前裝備
+for slot, item in player.equipment_slots.items():
+    item_name = item.name if item else "無"
+    st.sidebar.text(f"{slot}: {item_name}")
+
+# --- 3. 主畫面 ---
 city_data = maps_db.cities[st.session_state.current_location_id]
-st.title(f"📍 當前地點：{city_data['name']} ({city_data['region']})")
+st.title(f"📍 {city_data['name']} ({city_data['region']})")
 
-# 顯示行動日誌
-st.subheader("行動紀錄")
-for log in st.session_state.logs[-3:]: # 只顯示最近3條
-    st.info(log)
+# 行動日誌
+with st.expander("📜 行動紀錄", expanded=False):
+    for log in st.session_state.logs[-5:]:
+        st.text(log)
 
-# --- 4. 互動邏輯 ---
-# --- 4. 城市互動區 (City Actions) ---
-# 使用分頁將功能模組化，避免視覺混亂
-tab_people, tab_market = st.tabs(["👥 拜訪武將", "🛒 城市市集"])
+# --- 4. 核心互動區 ---
+# 新增 "🎒 背包管理" 分頁
+tab_people, tab_market, tab_inventory = st.tabs(["👥 拜訪武將", "🛒 城市市集", "🎒 背包管理"])
 
-# === 分頁 1: 武將互動 ===
+# === 分頁 1: 武將互動 (保持不變，略作縮減以節省篇幅) ===
 with tab_people:
-    # 模擬過濾出在此地的武將
     local_generals = characters_db.all_generals[:5]
-    
     if not local_generals:
-        st.write("此地荒涼，並無名將駐足。")
+        st.write("此地荒涼。")
     else:
-        col1, col2 = st.columns(2)
-        for i, general in enumerate(local_generals):
-            # 動態分配欄位
-            with col1 if i % 2 == 0 else col2:
-                with st.container(border=True): # 增加邊框讓視覺更整齊
-                    st.write(f"**{general.name}**")
-                    st.caption(f"好感: {general.affection} | 武: {general.war}")
-                    
-                    b_col1, b_col2 = st.columns(2)
-                    if b_col1.button("比武", key=f"duel_{general.name}"):
-                        res = interact(player, general, "duel")
-                        player.grow("war", 0.5)
-                        st.session_state.logs.append(res)
-                        st.rerun()
-                        
-                    if b_col2.button("舌戰", key=f"debate_{general.name}"):
-                        res = interact(player, general, "debate")
-                        player.grow("int_", 0.5)
-                        st.session_state.logs.append(res)
-                        st.rerun()
+        for general in local_generals:
+            with st.container(border=True):
+                c1, c2 = st.columns([3, 1])
+                c1.write(f"**{general.name}** (好感: {general.affection})")
+                if c2.button("比武", key=f"duel_{general.name}"):
+                    res = interact(player, general, "duel")
+                    st.session_state.logs.append(res)
+                    st.rerun()
 
-# === 分頁 2: 裝備市集 ===
+# === 分頁 2: 裝備市集 (加入金錢邏輯) ===
 with tab_market:
-    st.caption("歡迎來到裝備黑市，這裡的貨品良莠不齊。")
+    st.info(f"持有資金: {player.gold}")
+    shop_items = equipment_db.common_gear[:4]
     
-    # 讀取裝備庫
-    shop_items = equipment_db.common_gear[:6] # 限制顯示數量以維持效能
-    
-    m_col1, m_col2 = st.columns(2)
+    cols = st.columns(2)
     for i, item in enumerate(shop_items):
-        with m_col1 if i % 2 == 0 else m_col2:
-            with st.expander(f"{item.name} (💰{item.price})"):
-                st.markdown(f"**類型**: {item.type_}")
-                st.markdown(f"**效果**: {item.attr} +{item.value}")
-                st.info(f"_{item.description}_")
+        with cols[i % 2]:
+            with st.container(border=True):
+                st.write(f"**{item.name}**")
+                st.caption(f"類型: {item.type_} | {item.attr} +{item.value}")
+                st.caption(f"價格: 💰{item.price}")
                 
-                # 購買按鈕邏輯
                 if st.button("購買", key=f"buy_{item.name}"):
-                    # 暫時直接加入背包 (下一階段再實作金錢扣除)
-                    if not hasattr(st.session_state.player, 'inventory'):
-                         st.session_state.player.inventory = []
-                    
-                    st.session_state.player.inventory.append(item)
-                    st.session_state.logs.append(f"你購買了 {item.name}。")
-                    st.success("已購入！")
+                    # 交易檢核邏輯
+                    if player.gold >= item.price:
+                        player.gold -= item.price
+                        player.inventory.append(item)
+                        st.session_state.logs.append(f"購入 {item.name}，花費 {item.price}。")
+                        st.success("購買成功！")
+                        st.rerun()
+                    else:
+                        st.error("資金不足！")
+
+# === 分頁 3: 背包管理 (全新系統) ===
+with tab_inventory:
+    if not player.inventory:
+        st.write("背包空空如也。")
+    else:
+        st.write(f"背包物品數: {len(player.inventory)}")
+        for i, item in enumerate(player.inventory):
+            with st.container(border=True):
+                ic1, ic2, ic3 = st.columns([2, 2, 1])
+                ic1.write(f"**{item.name}** ({item.type_})")
+                ic2.caption(f"{item.attr} +{item.value} | {item.description}")
+                
+                # 裝備按鈕
+                if ic3.button("裝備", key=f"equip_{i}"):
+                    msg = player.equip(item)
+                    st.session_state.logs.append(msg)
                     st.rerun()
 
 st.divider()
-st.write("更換地點 (範例功能):")
-# 簡單的地圖移動邏輯
 if st.button("前往 官渡"):
     st.session_state.current_location_id = 2
-    st.session_state.logs.append("你移動到了官渡。")
-
+    st.session_state.logs.append("移動至官渡。")
     st.rerun()
