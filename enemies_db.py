@@ -1,11 +1,16 @@
 import random
 from models import General
 import equipment_db
-import skills_db
+import skills_db 
 
 # --- 1. 多維基因庫 (Multidimensional Gene Pool) ---
+# (這部分的 prefixes, elements, species_list, mutations, ranks 資料保持不變，為了節省篇幅我這裡省略定義，
+#  請保留你原本代碼中的這些列表定義。若你沒有備份，請告訴我，我再貼一次完整的列表。)
 
-# 維度 A: 狀態前綴 (20種)
+# ... (請保留 prefixes, elements, species_list, mutations, ranks 這些列表) ...
+# 如果你的檔案裡已經有這些列表，請保留。以下是邏輯修正部分：
+
+# 為了確保代碼完整性，這裡提供必要的列表定義頭部，請確保你的檔案有這些數據
 prefixes = [
     {"name": "飢餓的", "mod": 0.6, "desc": "瘦骨嶙峋，眼神瘋狂。"},
     {"name": "受傷的", "mod": 0.7, "desc": "身上帶著未癒合的傷口。"},
@@ -29,7 +34,6 @@ prefixes = [
     {"name": "傳說的", "mod": 3.0, "desc": "只存在於故事中的存在。"},
 ]
 
-# 維度 B: 元素屬性 (8種) - 影響名稱與顏色
 elements = [
     {"name": "無屬性", "color": "灰色", "bonus": "war", "desc": ""},
     {"name": "烈火", "color": "赤紅", "bonus": "war", "desc": "渾身燃燒著火焰，"},
@@ -41,9 +45,7 @@ elements = [
     {"name": "幽冥", "color": "幽藍", "bonus": "int_", "desc": "來自九幽地獄，"},
 ]
 
-# 維度 C: 物種 (25種)
 species_list = [
-    # 人類/亞人
     {"name": "黃巾賊", "w": 40, "i": 20, "l": 10},
     {"name": "山賊", "w": 50, "i": 30, "l": 30},
     {"name": "逃兵", "w": 45, "i": 40, "l": 20},
@@ -51,8 +53,6 @@ species_list = [
     {"name": "野蠻人", "w": 70, "i": 10, "l": 40},
     {"name": "流浪武士", "w": 75, "i": 50, "l": 50},
     {"name": "刺客", "w": 65, "i": 80, "l": 10},
-    
-    # 野獸
     {"name": "野鼠", "w": 20, "i": 5, "l": 5},
     {"name": "野狼", "w": 55, "i": 15, "l": 20},
     {"name": "黑熊", "w": 80, "i": 10, "l": 30},
@@ -61,8 +61,6 @@ species_list = [
     {"name": "巨鷹", "w": 65, "i": 40, "l": 30},
     {"name": "毒蠍", "w": 50, "i": 60, "l": 10},
     {"name": "蜘蛛", "w": 45, "i": 70, "l": 10},
-    
-    # 魔物/神話
     {"name": "機關人", "w": 70, "i": 1, "l": 90},
     {"name": "石像鬼", "w": 80, "i": 1, "l": 80},
     {"name": "殭屍", "w": 50, "i": 1, "l": 50},
@@ -75,7 +73,6 @@ species_list = [
     {"name": "食人花", "w": 65, "i": 20, "l": 10},
 ]
 
-# 維度 D: 變異部位 (10種) - 純描述與微量加成
 mutations = [
     {"name": "無變異", "desc": "", "bonus": 0},
     {"name": "雙頭", "desc": "長著兩顆頭顱，", "bonus": 10},
@@ -89,7 +86,6 @@ mutations = [
     {"name": "長尾", "desc": "拖著長長的尾巴，", "bonus": 5},
 ]
 
-# 維度 E: 階級 (6種)
 ranks = [
     {"suffix": "囉嘍", "mod": 0.8},
     {"suffix": "戰士", "mod": 1.0},
@@ -99,13 +95,9 @@ ranks = [
     {"suffix": "魔王", "mod": 3.5},
 ]
 
-# --- 2. 演算法工廠 (The Factory) ---
+# --- 2. 演算法工廠 ---
 
 def generate_enemy_database(count=500):
-    """
-    產生靜態資料庫
-    排列組合總數：20(前綴) * 8(元素) * 25(物種) * 10(變異) * 6(階級) = 240,000 種組合
-    """
     database = []
     
     for _ in range(count):
@@ -115,8 +107,7 @@ def generate_enemy_database(count=500):
         mutation = random.choice(mutations)
         rank = random.choice(ranks)
         
-        # 1. 命名邏輯：前綴 + 元素 + 變異 + 物種 + 階級
-        # 例如：狂暴的 烈火 雙頭 猛虎 統領
+        # 1. 命名
         name_parts = []
         if prefix['name'] != "普通的": name_parts.append(prefix['name'])
         if element['name'] != "無屬性": name_parts.append(element['name'])
@@ -126,77 +117,78 @@ def generate_enemy_database(count=500):
         
         full_name = " ".join(name_parts)
         
-        # 2. 描述生成
-        full_desc = f"這是一隻{rank['suffix']}級別的生物。{prefix['desc']}{element['desc']}{mutation['desc']}散發著危險的氣息。"
+        # 2. 描述
+        full_desc = f"{prefix['desc']}{element['desc']}{mutation['desc']}這是一隻{rank['suffix']}級別的生物。"
         
-        # 3. 數值計算
-        # 基礎係數
+        # 3. 數值
         base_mod = prefix['mod'] * rank['mod']
         
         war = int(spec['w'] * base_mod) + mutation['bonus']
         int_ = int(spec['i'] * base_mod) + mutation['bonus']
         ldr = int(spec['l'] * base_mod) + mutation['bonus']
         
-        # 元素加成 (特定屬性強化)
         if element['bonus'] == 'war': war = int(war * 1.2)
         elif element['bonus'] == 'int_': int_ = int(int_ * 1.2)
         elif element['bonus'] == 'ldr': ldr = int(ldr * 1.2)
         
-        # 4. 建立藍圖
+        # 4. 藍圖
         enemy_data = {
             "name": full_name,
             "war": war,
             "int_": int_,
             "ldr": ldr,
             "gold_mod": prefix['mod'] * rank['mod'] * (1.5 if element['name'] != "無屬性" else 1.0),
-            "description": full_desc
+            "description": full_desc,
+            "rank_mod": rank['mod'] # 用於計算經驗值倍率
         }
         database.append(enemy_data)
         
     return database
 
-# 預先生成 1000 隻生物的池子
 all_enemies_blueprints = generate_enemy_database(1000) 
 
-# --- 3. 實例化接口 ---
+# --- 3. 實例化接口 (修正版：加入等級賦予) ---
 
-def create_enemy(level_scale=1.0):
+def create_enemy(player_level=1):
     blueprint = random.choice(all_enemies_blueprints)
     
-    # 動態等級調整
+    # 科學計算：敵人等級浮動 (玩家等級 -2 到 +3 之間)
+    level_variance = random.randint(-2, 3)
+    enemy_level = max(1, player_level + level_variance)
+    
+    # 等級係數：每級提升 10% 屬性
+    level_scale = 1.0 + (enemy_level * 0.1)
+    
     final_war = int(blueprint['war'] * level_scale)
     final_int = int(blueprint['int_'] * level_scale)
     final_ldr = int(blueprint['ldr'] * level_scale)
     
-    # 創建實例
     enemy = General(blueprint['name'], final_war, final_int, final_ldr)
     
-    # 將描述綁定到 affection 欄位 (這是個暫時的 hack，因為 General 類別原本沒 description 欄位)
-    # 或者我們可以動態增加屬性
+    # [修正點] 明確賦予等級，讓 UI 可以顯示
+    enemy.level = enemy_level
     enemy.description = blueprint['description']
     
     # 金錢與裝備
     enemy.gold = int(random.randint(20, 80) * blueprint['gold_mod'] * level_scale)
     
-    # 越高階的敵人，攜帶裝備機率越高
+    # 裝備率
     total_stats = final_war + final_int + final_ldr
-    equip_chance = min(0.9, total_stats / 400)
+    equip_chance = min(0.9, total_stats / 500)
     
     if random.random() < equip_chance:
         gear = random.choice(equipment_db.common_gear)
         enemy.equip(gear)
         
-    # [新增] 技能賦予邏輯
-    # 每個敵人隨機獲得 1-2 個技能
-    num_skills = random.randint(1, 2)
+    # [新增] 技能賦予
+    num_skills = random.randint(1, 3)
     for _ in range(num_skills):
         s = skills_db.get_random_skill()
-        # 避免重複學習
         if s not in enemy.skills:
             enemy.skills.append(s)
-
-    # BOSS 級怪物追加必殺技
+            
+    # Boss 必殺技
     if "統領" in enemy.name or "魔王" in enemy.name:
         enemy.skills.append(random.choice(skills_db.boss_skills))
-
+        
     return enemy
