@@ -1,15 +1,16 @@
 # models.py
 # 核心生物與物品模型
 
-class Entity:
-    def __init__(self, name, war, int_, ldr):
-        self.name = name
-        self.war = war
-        self.int_ = int_
-        self.ldr = ldr
-        self.level = 1
-        self.xp = 0            # 當前經驗
-        self.max_xp = 100      # 升級所需經驗
+class General(Entity):
+    def __init__(self, name, war, int_, ldr, affection=0, location_id=1):
+        super().__init__(name, war, int_, ldr)
+        self.affection = affection
+        self.location_id = location_id # 新增：地理位置感知
+        self.gold = 1000
+        self.inventory = []
+        self.equipment_slots = {
+            "hat": None, "armor": None, "shoe": None, "weapon": None, "artifact": None
+        }
 
     def grow(self, attr, value):
         if hasattr(self, attr):
