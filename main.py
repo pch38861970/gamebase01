@@ -33,7 +33,7 @@ st.markdown("""
             padding: 0.25rem 0.5rem;
             min-height: auto;
         }
-        /* 特別優化交談氣泡 */
+        /* 交談氣泡樣式 */
         .chat-bubble {
             background-color: #262730;
             border: 1px solid #4B4B4B;
@@ -53,19 +53,19 @@ if 'player' not in st.session_state:
     st.session_state.player.skills.append(starter_skill)
 
 if 'current_location_id' not in st.session_state:
-    st.session_state.current_location_id = 51
+    st.session_state.current_location_id = 51 # 預設位置 (可自行調整)
 
 if 'logs' not in st.session_state:
-    st.session_state.logs = ["系統啟動：社交模組載入完畢。"]
+    st.session_state.logs = ["系統啟動：逸品模組已載入。"]
 
 if 'combat_target' not in st.session_state:
     st.session_state.combat_target = None 
 if 'combat_type' not in st.session_state:
     st.session_state.combat_type = None
 
-# 交談暫存 (用於顯示最後一次對話)
+# 交談暫存
 if 'last_talk' not in st.session_state:
-    st.session_state.last_talk = {} # {general_name: message}
+    st.session_state.last_talk = {} 
 
 player = st.session_state.player
 
@@ -168,12 +168,32 @@ with col_game:
             level_diff = target_lvl - player.level if isinstance(target_lvl, int) else 0
             xp_gain = max(10, 50 + (level_diff * 10))
             
+            # 結算
             player.gold += loot
             is_lvl = player.gain_xp(xp_gain)
             player.grow("war" if c_type == "duel" else "int_", 1)
             target.affection = min(100, target.affection + 5)
             
-            msg = f"勝 Lv.{target_lvl} {target.name}: +{loot}金 +{xp_gain}XP"
+            # === [新增] 掠奪逸品邏輯 ===
+            # 檢查敵人身上有沒有逸品
+            enemy_artifacts = []
+            for slot, item in target.equipment_slots.items():
+                if item and item.is_artifact:
+                    enemy_artifacts.append(item)
+            
+            # 如果有逸品，10% 機率搶奪一件
+            stolen_msg = ""
+            if enemy_artifacts and random.random() < 0.1:
+                stolen_item = random.choice(enemy_artifacts)
+                
+                # 簡單移除邏輯
+                target.equipment_slots[stolen_item.type_] = None 
+                player.inventory.append(stolen_item)
+                
+                st.toast(f"你奪取了 {target.name} 的 {stolen_item.name}！", icon="😈")
+                stolen_msg = f" 【奪取逸品: {stolen_item.name}】"
+
+            msg = f"勝 Lv.{target_lvl} {target.name}: +{loot}金 +{xp_gain}XP{stolen_msg}"
             if is_lvl: msg += " [升級!]"
             st.session_state.logs.append(msg)
             
@@ -182,7 +202,7 @@ with col_game:
             st.session_state.combat_target = None
             if st.button("離開"): st.rerun()
 
-        # 戰鬥回合同前，略以節省篇幅 (邏輯保持不變)
+        # 玩家回合
         elif st.session_state.combat_turn == 'player':
             st.caption("你的回合")
             act_col1, act_col2 = st.columns([1, 2])
@@ -207,7 +227,6 @@ with col_game:
                             label = f"{skill.name}\n({skill.cost})"
                             if st.button(label, key=f"s_{idx}", disabled=not can_cast, use_container_width=True):
                                 player.current_mp -= skill.cost
-                                # 技能效果邏輯 (同前)
                                 if skill.type_ == "attack":
                                     base = player.get_total_stat("war" if c_type == 'duel' else "int_")
                                     dmg = int(base * skill.power)
@@ -217,13 +236,16 @@ with col_game:
                                     heal = int(player.max_hp * skill.power)
                                     player.current_hp = min(player.max_hp, player.current_hp + heal)
                                     st.session_state.combat_log_list.append(f"施展{skill.name}，回復 {heal}")
+                                elif skill.type_ == "buff":
+                                    player.current_mp = min(player.max_mp, player.current_mp + 30)
+                                    st.session_state.combat_log_list.append(f"施展{skill.name}，氣力回復")
                                 st.session_state.combat_turn = 'enemy'
                                 st.rerun()
 
+        # 敵人回合
         elif st.session_state.combat_turn == 'enemy':
             with st.spinner("敵方行動..."):
                 time.sleep(0.5)
-                # 敵人攻擊使用其主要屬性
                 stat_used = target.get_total_stat("war" if c_type == 'duel' else "int_")
                 dmg = max(1, int(stat_used * 0.5 + random.randint(-5, 5)))
                 player.current_hp -= dmg
@@ -257,11 +279,23 @@ with col_game:
                         player.gold += g
                         st.session_state.logs.append(f"撿到 {g} 金")
                         st.rerun()
-                    else:
-                        loot = random.choice(equipment_db.common_gear)
+                    elif dice <= 90: # === [更新] 撿裝備/逸品 ===
+                        # 使用新的掉落邏輯，傳入 0.005 (0.5%) 機率獲得逸品
+                        loot = equipment_db.get_random_loot(drop_rate=0.005)
                         player.inventory.append(loot)
-                        st.session_state.logs.append(f"獲得 {loot.name}")
+                        
+                        # 特殊顯示
+                        if loot.is_artifact:
+                            st.balloons()
+                            st.toast(f"天啊！你發現了傳說逸品：{loot.name}！", icon="🌟")
+                            st.session_state.logs.append(f"【奇蹟】發現了稀世珍寶：{loot.name} ({loot.description})")
+                        else:
+                            st.session_state.logs.append(f"尋寶：發現了 {loot.name}。")
                         st.rerun()
+                    else:
+                        st.session_state.logs.append("一無所獲。")
+                        st.rerun()
+                        
             with cw2:
                 with st.expander("戰地背包"):
                     if not player.inventory: st.caption("空")
@@ -282,15 +316,13 @@ with col_game:
                 if local_gens:
                     for gen in local_gens[:10]:
                         with st.container(border=True):
-                            # [優化] 顯示等級
                             st.markdown(f"**{gen.name}** (Lv.{gen.level})")
                             st.caption(f"武{gen.get_total_stat('war')} / 智{gen.get_total_stat('int_')} | 好感: {gen.affection}")
                             
-                            # [新增] 對話氣泡
+                            # 對話氣泡
                             if gen.name in st.session_state.last_talk:
                                 st.markdown(f"<div class='chat-bubble'>“{st.session_state.last_talk[gen.name]}”</div>", unsafe_allow_html=True)
                             
-                            # [優化] 三按鈕佈局：比武、舌戰、交談
                             b1, b2, b3 = st.columns(3)
                             if b1.button("⚔️ 比武", key=f"d_{gen.name}", use_container_width=True):
                                 st.session_state.combat_target = gen
@@ -301,10 +333,8 @@ with col_game:
                                 st.session_state.combat_type = "debate"
                                 st.rerun()
                             if b3.button("💬 交談", key=f"t_{gen.name}", use_container_width=True):
-                                # 隨機選一句話
                                 msg = random.choice(gen.dialogues) if hasattr(gen, 'dialogues') and gen.dialogues else "......"
                                 st.session_state.last_talk[gen.name] = msg
-                                # 增加一點微量好感
                                 if random.random() < 0.3:
                                     gen.affection = min(100, gen.affection + 1)
                                 st.rerun()
@@ -347,6 +377,6 @@ with col_game:
                 if cols_nav[idx % 4].button(f"{icon} {nd['name']}", key=f"mv_{nid}", use_container_width=True):
                     st.session_state.current_location_id = nid
                     st.session_state.logs.append(f"前往 {nd['name']}")
-                    st.session_state.last_talk = {} # 移動後清空對話暫存
+                    st.session_state.last_talk = {}
                     characters_db.simulate_world_turn()
                     st.rerun()
