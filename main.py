@@ -42,21 +42,15 @@ st.markdown("""
             margin-top: 5px;
             font-style: italic;
             color: #E0E0E0;
+            margin-bottom: 10px;
         }
-        /* 逸品高亮樣式 */
-        .artifact-tag {
-            color: #FFD700; /* 金色 */
-            font-weight: bold;
-            border: 1px solid #FFD700;
-            border-radius: 4px;
-            padding: 0px 4px;
-            font-size: 0.8em;
-            margin-right: 5px;
-        }
+        /* 裝備列樣式 */
         .gear-row {
-            font-size: 0.9em;
-            color: #A0A0A0;
-            margin-bottom: 2px;
+            font-size: 0.95em;
+            margin-bottom: 8px;
+            padding: 4px;
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 5px;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -71,14 +65,13 @@ if 'current_location_id' not in st.session_state:
     st.session_state.current_location_id = 51
 
 if 'logs' not in st.session_state:
-    st.session_state.logs = ["系統啟動：武將裝備透視模組已載入。"]
+    st.session_state.logs = ["系統啟動：戰術分析儀表板已更新。"]
 
 if 'combat_target' not in st.session_state:
     st.session_state.combat_target = None 
 if 'combat_type' not in st.session_state:
     st.session_state.combat_type = None
 
-# 交談暫存
 if 'last_talk' not in st.session_state:
     st.session_state.last_talk = {} 
 
@@ -105,10 +98,10 @@ with st.sidebar.expander("🔥 技能 & 🎒 裝備", expanded=True):
     has_gear = False
     for slot, item in player.equipment_slots.items():
         if item:
+            # 側邊欄也加上簡單的顏色顯示
+            color = "#FFD700" if item.is_artifact else "#A0A0A0" # 金色 vs 灰色
             icon = "🌟" if item.is_artifact else "🛡️"
-            color = ":orange[" if item.is_artifact else ""
-            end_color = "]" if item.is_artifact else ""
-            st.caption(f"[{slot}] {color}{icon} {item.name}{end_color}")
+            st.markdown(f"<span style='color:{color}'>{icon} [{slot}] {item.name}</span>", unsafe_allow_html=True)
             has_gear = True
     if not has_gear: st.caption("無")
 
@@ -129,7 +122,6 @@ with col_game:
         target = st.session_state.combat_target
         c_type = st.session_state.combat_type
         
-        # 強制數據初始化
         if player.max_hp <= 0: player.init_combat_stats(c_type)
         if target.max_hp <= 0: target.init_combat_stats(c_type)
         if 'combat_turn' not in st.session_state:
@@ -186,28 +178,25 @@ with col_game:
             level_diff = target_lvl - player.level if isinstance(target_lvl, int) else 0
             xp_gain = max(10, 50 + (level_diff * 10))
             
-            # 結算
             player.gold += loot
             is_lvl = player.gain_xp(xp_gain)
             player.grow("war" if c_type == "duel" else "int_", 1)
             target.affection = min(100, target.affection + 5)
             
-            # === 掠奪逸品邏輯 ===
+            # 掠奪逸品邏輯
             enemy_artifacts = []
-            # 檢查敵人所有裝備欄位
             for slot, item in target.equipment_slots.items():
                 if item and item.is_artifact:
                     enemy_artifacts.append(item)
             
             stolen_msg = ""
-            # 10% 機率掠奪
             if enemy_artifacts and random.random() < 0.1:
                 stolen_item = random.choice(enemy_artifacts)
-                target.equipment_slots[stolen_item.type_] = None # 敵人失去裝備
+                target.equipment_slots[stolen_item.type_] = None 
                 player.inventory.append(stolen_item)
                 
-                st.toast(f"你奪取了 {target.name} 的 {stolen_item.name}！", icon="😈")
-                stolen_msg = f" 【奪取逸品: {stolen_item.name}】"
+                st.toast(f"奪取了 {target.name} 的 {stolen_item.name}！", icon="😈")
+                stolen_msg = f" 【奪取: {stolen_item.name}】"
 
             msg = f"勝 Lv.{target_lvl} {target.name}: +{loot}金 +{xp_gain}XP{stolen_msg}"
             if is_lvl: msg += " [升級!]"
@@ -218,7 +207,6 @@ with col_game:
             st.session_state.combat_target = None
             if st.button("離開"): st.rerun()
 
-        # 玩家回合
         elif st.session_state.combat_turn == 'player':
             st.caption("你的回合")
             act_col1, act_col2 = st.columns([1, 2])
@@ -258,7 +246,6 @@ with col_game:
                                 st.session_state.combat_turn = 'enemy'
                                 st.rerun()
 
-        # 敵人回合
         elif st.session_state.combat_turn == 'enemy':
             with st.spinner("敵方行動..."):
                 time.sleep(0.5)
@@ -329,24 +316,33 @@ with col_game:
                 if local_gens:
                     for gen in local_gens[:10]:
                         with st.container(border=True):
-                            # [優化] 顯示等級
                             st.markdown(f"**{gen.name}** (Lv.{gen.level})")
                             st.caption(f"武{gen.get_total_stat('war')} / 智{gen.get_total_stat('int_')} | 好感: {gen.affection}")
                             
-                            # [新增] 顯示武將身上的裝備與逸品 (讓玩家知道他很強!)
-                            gear_display = []
+                            # === [更新] 裝備顯示與 Tooltip ===
+                            gear_html_list = []
                             for slot, item in gen.equipment_slots.items():
                                 if item:
+                                    # 構建 Tooltip 文本 (支援換行)
+                                    attr_map = {"war": "武力", "int_": "智力", "ldr": "統御"}
+                                    attr_name = attr_map.get(item.attr, item.attr)
+                                    tooltip = f"【{item.name}】&#10;類型: {item.type_}&#10;屬性: {attr_name} +{item.value}&#10;說明: {item.description}"
+                                    
+                                    # 顏色區分
                                     if item.is_artifact:
-                                        # 逸品特別高亮顯示
-                                        gear_display.append(f"🌟:orange[{item.name}]")
+                                        # 金色 + 游標提示
+                                        html = f"<span style='color:#FFD700; cursor:help; border-bottom:1px dotted #555;' title='{tooltip}'>🌟{item.name}</span>"
                                     else:
-                                        gear_display.append(f"🛡️{item.name}")
+                                        # 灰色 + 游標提示
+                                        html = f"<span style='color:#B0B0B0; cursor:help;' title='{tooltip}'>🛡️{item.name}</span>"
+                                    
+                                    gear_html_list.append(html)
                             
-                            if gear_display:
-                                st.markdown(f"<div class='gear-row'>{' '.join(gear_display)}</div>", unsafe_allow_html=True)
-                            
-                            # 對話氣泡
+                            if gear_html_list:
+                                full_html = "&nbsp;&nbsp;".join(gear_html_list)
+                                st.markdown(f"<div class='gear-row'>{full_html}</div>", unsafe_allow_html=True)
+                            # ==============================
+
                             if gen.name in st.session_state.last_talk:
                                 st.markdown(f"<div class='chat-bubble'>“{st.session_state.last_talk[gen.name]}”</div>", unsafe_allow_html=True)
                             
@@ -364,18 +360,14 @@ with col_game:
                                 st.session_state.last_talk[gen.name] = msg
                                 if random.random() < 0.3:
                                     gen.affection = min(100, gen.affection + 1)
-                                    
-                                # [新增] 好感度 100 贈送邏輯
                                 if gen.affection >= 100:
-                                    # 檢查他有沒有逸品
                                     has_artifact = [i for i in gen.equipment_slots.values() if i and i.is_artifact]
-                                    if has_artifact and random.random() < 0.2: # 20% 機率贈送
+                                    if has_artifact and random.random() < 0.2:
                                         gift = random.choice(has_artifact)
-                                        gen.equipment_slots[gift.type_] = None # 移除
+                                        gen.equipment_slots[gift.type_] = None 
                                         player.inventory.append(gift)
-                                        st.toast(f"知己難尋！{gen.name} 將傳家寶 {gift.name} 送給了你！", icon="🎁")
+                                        st.toast(f"{gen.name} 贈送了 {gift.name}！", icon="🎁")
                                         st.session_state.logs.append(f"【贈禮】{gen.name} 贈送了 {gift.name}。")
-                                        # 好感度重置或保持？這裡設為保持
                                 st.rerun()
 
             with t2:
