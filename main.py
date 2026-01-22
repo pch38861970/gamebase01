@@ -46,17 +46,19 @@ st.markdown("""
         }
         /* 裝備列樣式 */
         .gear-row {
-            font-size: 0.95em;
-            margin-bottom: 8px;
+            font-size: 0.85em; /* 字體稍微縮小 */
+            margin-bottom: 4px;
             padding: 4px;
             background-color: rgba(255, 255, 255, 0.05);
             border-radius: 5px;
+            color: #ccc;
         }
         /* 特效字體 */
         .dmg-text { color: #FF4B4B; font-weight: bold; }
         .heal-text { color: #00CC00; font-weight: bold; }
         .skill-text { color: #FFA500; font-weight: bold; }
         .turn-tag { color: #888888; font-size: 0.9em; margin-right: 5px; }
+        .new-log { border-left: 3px solid #FFA500; padding-left: 8px; } /* 最新訊息高亮 */
     </style>
 """, unsafe_allow_html=True)
 
@@ -71,7 +73,7 @@ if 'current_location_id' not in st.session_state:
     st.session_state.current_location_id = 51
 
 if 'logs' not in st.session_state:
-    st.session_state.logs = ["系統啟動：戰鬥介面優化補丁已載入。"]
+    st.session_state.logs = ["系統啟動：戰鬥日誌改為逆序排列（最新在最上）。"]
 
 if 'combat_target' not in st.session_state:
     st.session_state.combat_target = None 
@@ -155,7 +157,6 @@ def execute_turn(attacker, defender, skill=None):
         log_msg = f"{attacker.name} 發動攻擊。"
 
     if damage > 0:
-        # [修正] 使用 max(0, ...) 確保血量不為負數
         defender.current_hp = max(0, defender.current_hp - damage)
         log_msg += f" 造成 <span class='dmg-text'>{damage}</span> 點傷害。"
         
@@ -181,19 +182,21 @@ with col_game:
         if player.max_hp <= 0: player.init_combat_stats(c_type)
         if target.max_hp <= 0: target.init_combat_stats(c_type)
         
-        # 初始化戰鬥狀態與 [回合計數器]
         if 'combat_turn' not in st.session_state:
             st.session_state.combat_turn = 'player'
             st.session_state.combat_log_list = []
-            st.session_state.turn_count = 1 # [新增] 回合計數
+            st.session_state.turn_count = 1
             player.init_combat_stats(c_type)
             target.init_combat_stats(c_type)
 
         st.subheader(f"⚔️ VS {target.name}")
         
-        with st.container(height=150, border=True):
-            for log in st.session_state.combat_log_list:
-                st.markdown(log, unsafe_allow_html=True)
+        # [優化] 戰鬥日誌 (最新在最上)
+        with st.container(height=180, border=True):
+            for i, log in enumerate(st.session_state.combat_log_list):
+                # 第一條訊息 (最新) 加上高亮樣式
+                style_class = "new-log" if i == 0 else ""
+                st.markdown(f"<div class='{style_class}'>{log}</div>", unsafe_allow_html=True)
 
         p_status = "💫暈眩" if player.status.get("stunned") else ""
         t_status = "💫暈眩" if target.status.get("stunned") else ""
@@ -217,6 +220,28 @@ with col_game:
             hp_pct = max(0.0, min(1.0, target.current_hp / safe_t_max))
             st.progress(hp_pct, f"HP: {int(target.current_hp)} / {int(target.max_hp)}")
             
+            # [新增] 敵方素質與裝備小字顯示
+            t_war = target.get_total_stat("war")
+            t_int = target.get_total_stat("int_")
+            st.caption(f"⚔️ 武力: {t_war} | 📜 智力: {t_int}")
+            
+            # 顯示敵方裝備 (如果有)
+            enemy_gears = []
+            for item in target.equipment_slots.values():
+                if item:
+                    icon = "🌟" if item.is_artifact else "🛡️"
+                    color = "#FFD700" if item.is_artifact else "#A0A0A0"
+                    # Tooltip
+                    tooltip = f"{item.name} (+{item.value} {item.attr})"
+                    enemy_gears.append(f"<span style='color:{color}; cursor:help;' title='{tooltip}'>{icon}{item.name}</span>")
+            
+            if enemy_gears:
+                gear_html = "&nbsp;".join(enemy_gears)
+                st.markdown(f"<div class='gear-row'>{gear_html}</div>", unsafe_allow_html=True)
+            else:
+                st.caption("無裝備")
+
+            # 顯示技能
             if hasattr(target, 'skills') and target.skills:
                 skill_names = [f"{s.name}" for s in target.skills]
                 st.caption(f"潛在威脅: {', '.join(skill_names)}")
@@ -229,7 +254,6 @@ with col_game:
             st.session_state.logs.append(f"被 {target.name} 擊敗。")
             player.gold = int(player.gold * 0.9)
             
-            # 清理
             del st.session_state.combat_turn
             del st.session_state.combat_log_list
             if 'turn_count' in st.session_state: del st.session_state.turn_count
@@ -296,7 +320,6 @@ with col_game:
             if is_lvl: msg += " [升級!]"
             st.session_state.logs.append(msg)
             
-            # 清理
             del st.session_state.combat_turn
             del st.session_state.combat_log_list
             if 'turn_count' in st.session_state: del st.session_state.turn_count
@@ -309,13 +332,13 @@ with col_game:
             st.caption("你的回合")
             act_col1, act_col2 = st.columns([1, 2])
             
-            # [新增] 顯示回合數
             turn_display = f"<span class='turn-tag'>[第 {st.session_state.turn_count} 回合]</span>"
             
             with act_col1:
                 if st.button("⚔️ 普通攻擊", use_container_width=True, disabled=player.status.get("stunned")):
                     log, _ = execute_turn(player, target, None)
-                    st.session_state.combat_log_list.append(f"{turn_display} {log}")
+                    # [修改] 使用 insert(0, ...) 將新訊息插入最上方
+                    st.session_state.combat_log_list.insert(0, f"{turn_display} {log}")
                     st.session_state.combat_turn = 'enemy'
                     st.rerun()
                 if st.button("🏳️ 撤退", use_container_width=True):
@@ -337,7 +360,8 @@ with col_game:
                             
                             if st.button(label, key=f"s_{idx}", disabled=not can_cast or is_stunned, use_container_width=True):
                                 log, _ = execute_turn(player, target, skill)
-                                st.session_state.combat_log_list.append(f"{turn_display} {log}")
+                                # [修改] 插入最上方
+                                st.session_state.combat_log_list.insert(0, f"{turn_display} {log}")
                                 st.session_state.combat_turn = 'enemy'
                                 st.rerun()
 
@@ -354,12 +378,12 @@ with col_game:
                         chosen_skill = random.choice(potential_skills)
                 
                 log, _ = execute_turn(target, player, chosen_skill)
-                st.session_state.combat_log_list.append(f"{turn_display} {log}")
+                # [修改] 插入最上方
+                st.session_state.combat_log_list.insert(0, f"{turn_display} {log}")
                 
                 player.current_mp = min(player.max_mp, player.current_mp + 5)
                 target.current_mp = min(target.max_mp, target.current_mp + 5)
                 
-                # [新增] 回合數+1
                 st.session_state.turn_count += 1
                 
                 st.session_state.combat_turn = 'player'
