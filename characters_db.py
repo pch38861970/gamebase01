@@ -103,7 +103,9 @@ def assign_dialogues(general):
     # [修改] 移除 LDR 判斷，僅依賴 War 和 Int
     if general.war >= 80: pool += archetype_dialogues["warrior"]
     if general.int_ >= 80: pool += archetype_dialogues["strategist"]
-    # 這裡原本有 ldr 的判斷，現已移除，official 的台詞暫時不會被分配到
+    
+    # 由於移除了統御，原本 official 的台詞暫時作為智力高者的額外選項
+    if general.int_ >= 85: pool += archetype_dialogues["official"]
     
     if not pool: pool = archetype_dialogues["common"]
     
@@ -114,7 +116,9 @@ def assign_dialogues(general):
 # ==========================================
 #   第二部分：歷史數據 (Historical Data)
 # ==========================================
-# [修改] 徹底移除 LDR 欄位，只保留 Name, War, Int, Loc
+# [修改] 我已經手動移除了所有資料中的 LDR 欄位 (原第4欄)
+# 格式現在是: (Name, War, Int, Location_ID)
+
 historical_data = [
     # === 魏 ===
     ("曹操", 88, 96, 1), ("司馬懿", 68, 99, 1), ("荀彧", 25, 98, 1),
