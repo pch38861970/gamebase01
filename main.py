@@ -89,7 +89,7 @@ if 'current_location_id' not in st.session_state:
     st.session_state.current_location_id = 51 
 
 if 'logs' not in st.session_state:
-    st.session_state.logs = ["系統啟動：全功能整合完畢。"]
+    st.session_state.logs = ["系統啟動：戰鬥死鎖 Bug 已修復。"]
 
 if 'combat_target' not in st.session_state:
     st.session_state.combat_target = None 
@@ -155,6 +155,7 @@ def get_condition_icon(val):
     return "⛈️", "cond-bad"
 
 def execute_turn(attacker, defender, skill=None):
+    # [暈眩邏輯修正] 這裡只負責判定和回傳訊息，不負責按鈕的禁用與否
     if attacker.status.get("stunned", False):
         attacker.status["stunned"] = False 
         return f"💫 {attacker.name} 暈眩中，無法行動！", 0
@@ -360,14 +361,30 @@ with col_game:
             act_col1, act_col2 = st.columns([1, 2])
             turn_display = f"<span class='turn-tag'>[第 {st.session_state.turn_count} 回合]</span>"
             
+            # [修復] 暈眩時按鈕處理
+            is_stunned = player.status.get("stunned", False)
+            
             with act_col1:
-                if st.button("⚔️ 普通攻擊", use_container_width=True, disabled=player.status.get("stunned")):
-                    log, _ = execute_turn(player, target, None)
-                    st.session_state.combat_log_list.insert(0, f"{turn_display} {log}")
-                    st.session_state.combat_turn = 'enemy'; st.rerun()
+                if is_stunned:
+                    # 如果暈眩，顯示跳過按鈕
+                    if st.button("💫 暈眩中 (點擊跳過)", key="p_skip", use_container_width=True):
+                        # execute_turn 會處理暈眩的狀態解除與訊息回傳
+                        log, _ = execute_turn(player, target, None)
+                        st.session_state.combat_log_list.insert(0, f"{turn_display} {log}")
+                        st.session_state.combat_turn = 'enemy'
+                        st.rerun()
+                else:
+                    # 正常攻擊
+                    if st.button("⚔️ 普通攻擊", key="p_atk", use_container_width=True):
+                        log, _ = execute_turn(player, target, None)
+                        st.session_state.combat_log_list.insert(0, f"{turn_display} {log}")
+                        st.session_state.combat_turn = 'enemy'
+                        st.rerun()
+                        
                 if st.button("🏳️ 撤退", use_container_width=True):
                     st.session_state.combat_target = None; del st.session_state.turn_count
                     st.session_state.logs.append("逃離戰場"); advance_time(); st.rerun()
+            
             with act_col2:
                 if not player.skills: st.caption("無技能")
                 else:
@@ -375,7 +392,7 @@ with col_game:
                     for idx, skill in enumerate(player.skills):
                         with s_cols[idx % 3]:
                             can_cast = player.current_mp >= skill.cost
-                            is_stunned = player.status.get("stunned", False)
+                            # 暈眩時禁用技能按鈕
                             label = f"{skill.name}\n(MP{skill.cost})"
                             if skill.effect == 'vamp': label += "🩸"
                             if skill.effect == 'stun': label += "💫"
@@ -527,8 +544,7 @@ with col_game:
                 for i, item in enumerate(player.inventory):
                     c1, c2 = st.columns([3, 1])
                     c1.caption(item.name)
-                    if c2.button("裝", key=f"c_{i}"):
-                        player.equip(item); st.rerun()
+                    if c2.button("裝", key=f"c_{i}"): player.equip(item); st.rerun()
 
         st.divider()
         current_city = maps_db.cities.get(loc_id)
