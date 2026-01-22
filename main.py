@@ -7,6 +7,7 @@ import maps_db
 import equipment_db
 import enemies_db
 import skills_db
+import time_system # [新增] 引入時間系統
 
 # --- 1. 系統初始化 & CSS 注入 ---
 st.set_page_config(layout="wide", page_title="亂世模擬器")
@@ -63,20 +64,33 @@ st.markdown("""
         .cond-good { color: #00CC00; }
         .cond-avg { color: #FFFF00; }
         .cond-bad { color: #FF0000; }
+        /* 日期顯示 */
+        .date-display { 
+            font-size: 1.1em; 
+            font-weight: bold; 
+            color: #4da6ff; 
+            border-bottom: 1px solid #4da6ff;
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+        }
     </style>
 """, unsafe_allow_html=True)
 
 # 狀態初始化
 if 'player' not in st.session_state:
-    st.session_state.player = General("軒轅無名", 50, 50) # 移除 LDR
+    st.session_state.player = General("軒轅無名", 50, 50)
     starter_skill = skills_db.Skill("重斬", 15, "war", 1.2, "normal", "新手專用劍技")
     st.session_state.player.skills.append(starter_skill)
 
+# [新增] 初始化時間系統
+if 'game_time' not in st.session_state:
+    st.session_state.game_time = time_system.GameCalendar()
+
 if 'current_location_id' not in st.session_state:
-    st.session_state.current_location_id = 51 # 預設位置
+    st.session_state.current_location_id = 51
 
 if 'logs' not in st.session_state:
-    st.session_state.logs = ["系統啟動：介面已修復。"]
+    st.session_state.logs = ["系統啟動：建安曆法已啟用。"]
 
 if 'combat_target' not in st.session_state:
     st.session_state.combat_target = None 
@@ -87,8 +101,30 @@ if 'last_talk' not in st.session_state:
     st.session_state.last_talk = {} 
 
 player = st.session_state.player
+game_time = st.session_state.game_time
+
+# --- [新增] 時間推進 helper 函數 ---
+def advance_time():
+    """
+    執行一次行動，推進時間。
+    如果是新的一天，觸發世界模擬。
+    """
+    is_new_day, msg = game_time.advance_action()
+    if is_new_day:
+        st.toast(msg, icon="🌙")
+        st.session_state.logs.append(f"【換日】{msg}")
+        # 觸發 NPC 移動與成長
+        world_logs = characters_db.simulate_world_turn()
+        for l in world_logs:
+            st.session_state.logs.append(l)
+        # 玩家每日恢復少量狀態
+        player.current_hp = min(player.max_hp, player.current_hp + int(player.max_hp * 0.1))
+        player.current_mp = min(player.max_mp, player.current_mp + int(player.max_mp * 0.2))
 
 # --- 2. 側邊欄 ---
+# [修改] 顯示日期
+st.sidebar.markdown(f"<div class='date-display'>{game_time.get_date_string()}</div>", unsafe_allow_html=True)
+
 st.sidebar.markdown(f"### 👤 **{player.name}** (Lv.{player.level})")
 safe_max_xp = max(1, player.max_xp)
 xp_percent = min(1.0, player.xp / safe_max_xp)
@@ -130,7 +166,6 @@ def execute_turn(attacker, defender, skill=None):
     log_msg = ""
     damage = 0
     
-    # 狀態檢定
     crit_chance = attacker.condition / 200.0
     dodge_chance = defender.condition / 400.0
     
@@ -268,10 +303,15 @@ with col_game:
 
         st.divider()
 
+        # [修改] 戰鬥結束時推進時間
         if player.current_hp <= 0:
             st.error("💔 敗北")
             st.session_state.logs.append(f"被 {target.name} 擊敗。")
             player.gold = int(player.gold * 0.9)
+            
+            # 戰鬥結束，耗時一次
+            advance_time()
+            
             del st.session_state.combat_turn; del st.session_state.combat_log_list; del st.session_state.turn_count; st.session_state.combat_target = None
             if st.button("復活"): st.rerun()
 
@@ -304,7 +344,6 @@ with col_game:
                         else:
                             player.skills.append(new_skill); learn_msg = f" 【習得技能: {new_skill.name}】"; st.toast(f"你學會了 {new_skill.name}！", icon="🎓")
 
-            # 裝備掠奪
             stolen_msg = ""
             enemy_artifacts = [i for i in target.equipment_slots.values() if i and i.is_artifact]
             if enemy_artifacts and random.random() < 0.1:
@@ -317,9 +356,13 @@ with col_game:
             if is_lvl: msg += " [升級!]"
             st.session_state.logs.append(msg)
             
+            # 戰鬥勝利，耗時一次
+            advance_time()
+            
             del st.session_state.combat_turn; del st.session_state.combat_log_list; del st.session_state.turn_count; st.session_state.combat_target = None
             if st.button("離開"): st.rerun()
 
+        # [修改] 逃跑，耗時一次
         elif st.session_state.combat_turn == 'player':
             st.caption("你的回合")
             act_col1, act_col2 = st.columns([1, 2])
@@ -332,7 +375,9 @@ with col_game:
                     st.session_state.combat_turn = 'enemy'; st.rerun()
                 if st.button("🏳️ 撤退", use_container_width=True):
                     st.session_state.combat_target = None; del st.session_state.turn_count
-                    st.session_state.logs.append("逃離戰場"); st.rerun()
+                    st.session_state.logs.append("逃離戰場")
+                    advance_time() # 逃跑也算一次行動
+                    st.rerun()
             with act_col2:
                 if not player.skills: st.caption("無技能")
                 else:
@@ -372,14 +417,15 @@ with col_game:
         city_data = maps_db.cities.get(loc_id, maps_db.cities[1]) 
         st.subheader(f"📍 {city_data['name']} ({city_data.get('region', '')})")
         
-        # === [這裡就是您之前遺失的邏輯] ===
-        
         # 1. 荒野介面 (Wild)
         if city_data.get("type") == "wild":
             st.warning("⚠️ 危險區域")
             cw1, cw2 = st.columns([1, 1])
             with cw1:
+                # [修改] 探索按鈕增加時間推進
                 if st.button("🔍 探索", type="primary", use_container_width=True):
+                    advance_time() # 探索算一次行動
+                    
                     dice = random.randint(1, 100)
                     if dice <= 50:
                         enemy = enemies_db.create_enemy(player.level)
@@ -422,7 +468,6 @@ with col_game:
                             st.markdown(f"**{gen.name}** (Lv.{gen.level})")
                             st.caption(f"武{gen.get_total_stat('war')} / 智{gen.get_total_stat('int_')} | 好感: {gen.affection}")
                             
-                            # 裝備顯示
                             gear_html_list = []
                             for slot, item in gen.equipment_slots.items():
                                 if item:
@@ -441,11 +486,14 @@ with col_game:
                                 st.markdown(f"<div class='chat-bubble'>“{st.session_state.last_talk[gen.name]}”</div>", unsafe_allow_html=True)
                             
                             b1, b2, b3 = st.columns(3)
+                            # [修改] 互動消耗時間
                             if b1.button("⚔️ 比武", key=f"d_{gen.name}", use_container_width=True):
+                                # 戰鬥本身會耗時，這裡不用 advance_time，讓戰鬥結束時扣
                                 st.session_state.combat_target = gen; st.session_state.combat_type = "duel"; st.rerun()
                             if b2.button("🗣️ 舌戰", key=f"db_{gen.name}", use_container_width=True):
                                 st.session_state.combat_target = gen; st.session_state.combat_type = "debate"; st.rerun()
                             if b3.button("💬 交談", key=f"t_{gen.name}", use_container_width=True):
+                                advance_time() # 交談耗時
                                 msg = random.choice(gen.dialogues) if hasattr(gen, 'dialogues') and gen.dialogues else "......"
                                 st.session_state.last_talk[gen.name] = msg
                                 if random.random() < 0.3: gen.affection = min(100, gen.affection + 1)
@@ -502,9 +550,12 @@ with col_game:
                 if not nd: continue
                 icon = "🌲" if nd['type']=='wild' else "🏰"
                 if nd.get('region') == '海外': icon = "⛵"
+                # [修改] 移動消耗時間
                 if cols_nav[idx % 4].button(f"{icon} {nd['name']}", key=f"mv_{nid}", use_container_width=True):
+                    advance_time() # 移動耗時
+                    
                     st.session_state.current_location_id = nid
                     st.session_state.logs.append(f"前往 {nd['name']}")
                     st.session_state.last_talk = {}
-                    characters_db.simulate_world_turn()
+                    # 註：simulate_world_turn 已經被整合進 advance_time 內的換日邏輯，所以這裡移除手動呼叫
                     st.rerun()
