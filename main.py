@@ -21,11 +21,11 @@ st.markdown("""
         
         /* 1. 頁面容器緊湊化 */
         .block-container {
-            padding-top: 1.5rem !important; /* 大幅減少頂部留白 */
+            padding-top: 1.5rem !important;
             padding-bottom: 2rem !important;
             padding-left: 2rem !important;
             padding-right: 2rem !important;
-            max-width: 95% !important; /* 讓內容更寬，減少換行 */
+            max-width: 95% !important;
         }
         
         /* 2. 標題縮小 */
@@ -35,10 +35,10 @@ st.markdown("""
         
         /* 3. 數值指標 (Metric) 緊湊化 */
         div[data-testid="stMetricValue"] {
-            font-size: 1.0rem !important; /* 屬性數字變小 */
+            font-size: 1.0rem !important;
         }
         div[data-testid="stMetricLabel"] {
-            font-size: 0.75rem !important; /* 標籤變小 */
+            font-size: 0.75rem !important;
         }
         
         /* 4. 側邊欄緊湊化 */
@@ -50,9 +50,9 @@ st.markdown("""
         
         /* 5. 按鈕緊湊化 */
         .stButton button {
-            padding: 0px 10px !important; /* 減少按鈕內邊距 */
-            min-height: 0px !important;   /* 移除最小高度限制 */
-            height: 28px !important;      /* 固定較矮的高度 */
+            padding: 0px 10px !important;
+            min-height: 0px !important;
+            height: 28px !important;
             font-size: 0.85rem !important;
             line-height: 1 !important;
             margin-top: 2px !important;
@@ -60,7 +60,6 @@ st.markdown("""
         }
         
         /* 6. 自定義元件優化 */
-        /* 交談氣泡 */
         .chat-bubble {
             background-color: #262730;
             border: 1px solid #4B4B4B;
@@ -73,20 +72,18 @@ st.markdown("""
             margin-bottom: 6px;
         }
         
-        /* 裝備列 */
         .gear-row {
-            font-size: 0.8rem; /* 字體縮小 */
+            font-size: 0.8rem;
             margin-bottom: 4px;
             padding: 2px 6px;
             background-color: rgba(255, 255, 255, 0.05);
             border-radius: 4px;
             color: #ccc;
-            white-space: nowrap; /* 防止裝備名稱換行 */
+            white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
         
-        /* 日期顯示 */
         .date-display { 
             font-size: 1.0rem; 
             font-weight: bold; 
@@ -96,22 +93,18 @@ st.markdown("""
             margin-bottom: 8px;
         }
 
-        /* 戰鬥日誌縮小 */
         .new-log { border-left: 3px solid #FFA500; padding-left: 8px; font-weight: bold; color: #fff;}
         p { margin-bottom: 0.4rem !important; font-size: 0.9rem !important; }
         
-        /* 特效字體 */
         .dmg-text { color: #FF4B4B; font-weight: bold; }
         .heal-text { color: #00CC00; font-weight: bold; }
         .skill-text { color: #FFA500; font-weight: bold; }
         .turn-tag { color: #888888; font-size: 0.8em; margin-right: 5px; }
         
-        /* 狀態指示器 */
         .cond-good { color: #00CC00; }
         .cond-avg { color: #FFFF00; }
         .cond-bad { color: #FF0000; }
         
-        /* 分隔線緊湊 */
         hr { margin: 0.5rem 0 !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -129,7 +122,7 @@ if 'current_location_id' not in st.session_state:
     st.session_state.current_location_id = 51 
 
 if 'logs' not in st.session_state:
-    st.session_state.logs = ["系統啟動：緊湊型介面已載入。"]
+    st.session_state.logs = ["系統啟動：回合計數器錯誤已修復。"]
 
 if 'combat_target' not in st.session_state:
     st.session_state.combat_target = None 
@@ -144,7 +137,6 @@ game_time = st.session_state.game_time
 
 # --- [新增] Tooltip 生成器 ---
 def get_item_tooltip(item, html_mode=False):
-    """生成裝備詳細資訊"""
     attr_map = {"war": "武力", "int_": "智力", "ldr": "統御"}
     attr_name = attr_map.get(item.attr, item.attr)
     val_str = f"+{item.value}"
@@ -271,7 +263,6 @@ col_game, col_log = st.columns([7, 3])
 
 with col_log:
     st.markdown("###### 📜 歷史紀錄")
-    # [修改] 減少日誌區高度，避免太佔位
     log_container = st.container(height=400)
     with log_container:
         log_html = "<br>".join([f"<span style='font-size:0.85rem; color:#DDD;'>• {log}</span>" for log in reversed(st.session_state.logs)])
@@ -284,9 +275,15 @@ with col_game:
         target = st.session_state.combat_target
         c_type = st.session_state.combat_type
         
+        # 1. 確保基本屬性初始化
         if player.max_hp <= 0: player.init_combat_stats(c_type)
         if target.max_hp <= 0: target.init_combat_stats(c_type)
         
+        # 2. [修復重點] 安全檢查：確保 turn_count 永遠存在
+        if 'turn_count' not in st.session_state:
+            st.session_state.turn_count = 1
+
+        # 3. 戰鬥初始化 (首次遭遇)
         if 'combat_turn' not in st.session_state:
             st.session_state.combat_turn = 'player'
             st.session_state.combat_log_list = []
@@ -356,7 +353,6 @@ with col_game:
         if player.current_hp <= 0:
             st.error("💔 敗北")
             
-            # [實裝] 死亡懲罰：掉 5 等，扣屬性，扣錢
             loss_gold = int(player.gold * 0.1)
             player.gold = max(0, player.gold - loss_gold)
             
@@ -370,10 +366,8 @@ with col_game:
             if actual_lost > 0:
                 player.level = target_level
                 player.xp = 0
-                # 倒扣屬性 (每級3點)
                 player.war = max(10, player.war - (actual_lost * 3))
                 player.int_ = max(10, player.int_ - (actual_lost * 3))
-                # 重算 MaxXP
                 player.max_xp = int(100 * (1.2 ** (player.level - 1)))
                 log_msg += f" 💀元氣大傷！等級下降 {actual_lost} 級 (Lv.{old_level}→Lv.{player.level})。"
             else:
@@ -403,7 +397,6 @@ with col_game:
             player.gold += base_gold; is_lvl = player.gain_xp(base_xp)
             player.grow("war" if c_type == "duel" else "int_", 1)
             
-            # 技能學習
             learn_msg = ""
             if len(player.skills) < 5 and hasattr(target, 'skills') and target.skills:
                 if random.random() < 0.2:
@@ -462,14 +455,13 @@ with col_game:
                     for idx, skill in enumerate(player.skills):
                         with s_cols[idx % 3]:
                             can_cast = player.current_mp >= skill.cost
+                            label = f"{skill.name}\n(MP{skill.cost})"
+                            if skill.effect == 'vamp': label += "🩸"
+                            if skill.effect == 'stun': label += "💫"
                             
                             attr_map = {"war": "武力", "int_": "智力"}
                             eff_map = {"normal": "無", "vamp": "吸血", "stun": "暈眩", "critical": "必爆", "heal_self": "治療"}
                             tooltip_text = f"倍率: {skill.multiplier}x ({attr_map.get(skill.scale_attr, skill.scale_attr)})\n特效: {eff_map.get(skill.effect, skill.effect)}\n說明: {skill.desc}"
-                            
-                            label = f"{skill.name}\n(MP{skill.cost})"
-                            if skill.effect == 'vamp': label += "🩸"
-                            if skill.effect == 'stun': label += "💫"
                             
                             if st.button(label, key=f"s_{idx}", help=tooltip_text, disabled=not can_cast or is_stunned, use_container_width=True):
                                 log, _ = execute_turn(player, target, skill)
