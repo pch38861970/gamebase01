@@ -7,7 +7,7 @@ import maps_db
 import equipment_db
 import enemies_db
 import skills_db
-import time_system # [新增] 引入時間系統
+import time_system 
 
 # --- 1. 系統初始化 & CSS 注入 ---
 st.set_page_config(layout="wide", page_title="亂世模擬器")
@@ -78,19 +78,18 @@ st.markdown("""
 
 # 狀態初始化
 if 'player' not in st.session_state:
-    st.session_state.player = General("軒轅無名", 50, 50)
+    st.session_state.player = General("軒轅無名", 50, 50) 
     starter_skill = skills_db.Skill("重斬", 15, "war", 1.2, "normal", "新手專用劍技")
     st.session_state.player.skills.append(starter_skill)
 
-# [新增] 初始化時間系統
 if 'game_time' not in st.session_state:
     st.session_state.game_time = time_system.GameCalendar()
 
 if 'current_location_id' not in st.session_state:
-    st.session_state.current_location_id = 51
+    st.session_state.current_location_id = 51 
 
 if 'logs' not in st.session_state:
-    st.session_state.logs = ["系統啟動：建安曆法已啟用。"]
+    st.session_state.logs = ["系統啟動：全功能整合完畢。"]
 
 if 'combat_target' not in st.session_state:
     st.session_state.combat_target = None 
@@ -103,26 +102,19 @@ if 'last_talk' not in st.session_state:
 player = st.session_state.player
 game_time = st.session_state.game_time
 
-# --- [新增] 時間推進 helper 函數 ---
+# --- 時間推進 helper 函數 ---
 def advance_time():
-    """
-    執行一次行動，推進時間。
-    如果是新的一天，觸發世界模擬。
-    """
     is_new_day, msg = game_time.advance_action()
     if is_new_day:
         st.toast(msg, icon="🌙")
         st.session_state.logs.append(f"【換日】{msg}")
-        # 觸發 NPC 移動與成長
         world_logs = characters_db.simulate_world_turn()
         for l in world_logs:
             st.session_state.logs.append(l)
-        # 玩家每日恢復少量狀態
         player.current_hp = min(player.max_hp, player.current_hp + int(player.max_hp * 0.1))
         player.current_mp = min(player.max_mp, player.current_mp + int(player.max_mp * 0.2))
 
 # --- 2. 側邊欄 ---
-# [修改] 顯示日期
 st.sidebar.markdown(f"<div class='date-display'>{game_time.get_date_string()}</div>", unsafe_allow_html=True)
 
 st.sidebar.markdown(f"### 👤 **{player.name}** (Lv.{player.level})")
@@ -140,7 +132,11 @@ with st.sidebar.expander("🔥 技能 & 🎒 裝備", expanded=True):
     if not player.skills: st.caption("無")
     else: 
         for s in player.skills:
-            st.caption(f"🔹 {s.name} (MP{s.cost})")
+            attr_map = {"war": "武力", "int_": "智力"}
+            eff_map = {"normal": "無", "vamp": "吸血", "stun": "暈眩", "critical": "必爆", "heal_self": "治療"}
+            tooltip_text = f"倍率: {s.multiplier}x ({attr_map.get(s.scale_attr, s.scale_attr)})\n特效: {eff_map.get(s.effect, s.effect)}\n說明: {s.desc}"
+            st.caption(f"🔹 {s.name} (MP{s.cost})", help=tooltip_text)
+            
     st.divider()
     st.markdown("**[裝備]**")
     has_gear = False
@@ -303,13 +299,11 @@ with col_game:
 
         st.divider()
 
-        # [修改] 戰鬥結束時推進時間
         if player.current_hp <= 0:
             st.error("💔 敗北")
             st.session_state.logs.append(f"被 {target.name} 擊敗。")
             player.gold = int(player.gold * 0.9)
             
-            # 戰鬥結束，耗時一次
             advance_time()
             
             del st.session_state.combat_turn; del st.session_state.combat_log_list; del st.session_state.turn_count; st.session_state.combat_target = None
@@ -356,13 +350,11 @@ with col_game:
             if is_lvl: msg += " [升級!]"
             st.session_state.logs.append(msg)
             
-            # 戰鬥勝利，耗時一次
             advance_time()
             
             del st.session_state.combat_turn; del st.session_state.combat_log_list; del st.session_state.turn_count; st.session_state.combat_target = None
             if st.button("離開"): st.rerun()
 
-        # [修改] 逃跑，耗時一次
         elif st.session_state.combat_turn == 'player':
             st.caption("你的回合")
             act_col1, act_col2 = st.columns([1, 2])
@@ -375,9 +367,7 @@ with col_game:
                     st.session_state.combat_turn = 'enemy'; st.rerun()
                 if st.button("🏳️ 撤退", use_container_width=True):
                     st.session_state.combat_target = None; del st.session_state.turn_count
-                    st.session_state.logs.append("逃離戰場")
-                    advance_time() # 逃跑也算一次行動
-                    st.rerun()
+                    st.session_state.logs.append("逃離戰場"); advance_time(); st.rerun()
             with act_col2:
                 if not player.skills: st.caption("無技能")
                 else:
@@ -389,7 +379,12 @@ with col_game:
                             label = f"{skill.name}\n(MP{skill.cost})"
                             if skill.effect == 'vamp': label += "🩸"
                             if skill.effect == 'stun': label += "💫"
-                            if st.button(label, key=f"s_{idx}", disabled=not can_cast or is_stunned, use_container_width=True):
+                            
+                            attr_map = {"war": "武力", "int_": "智力"}
+                            eff_map = {"normal": "無", "vamp": "吸血", "stun": "暈眩", "critical": "必爆", "heal_self": "治療"}
+                            tooltip_text = f"倍率: {skill.multiplier}x ({attr_map.get(skill.scale_attr, skill.scale_attr)})\n特效: {eff_map.get(skill.effect, skill.effect)}\n說明: {skill.desc}"
+                            
+                            if st.button(label, key=f"s_{idx}", help=tooltip_text, disabled=not can_cast or is_stunned, use_container_width=True):
                                 log, _ = execute_turn(player, target, skill)
                                 st.session_state.combat_log_list.insert(0, f"{turn_display} {log}")
                                 st.session_state.combat_turn = 'enemy'; st.rerun()
@@ -422,10 +417,8 @@ with col_game:
             st.warning("⚠️ 危險區域")
             cw1, cw2 = st.columns([1, 1])
             with cw1:
-                # [修改] 探索按鈕增加時間推進
                 if st.button("🔍 探索", type="primary", use_container_width=True):
-                    advance_time() # 探索算一次行動
-                    
+                    advance_time() 
                     dice = random.randint(1, 100)
                     if dice <= 50:
                         enemy = enemies_db.create_enemy(player.level)
@@ -486,14 +479,12 @@ with col_game:
                                 st.markdown(f"<div class='chat-bubble'>“{st.session_state.last_talk[gen.name]}”</div>", unsafe_allow_html=True)
                             
                             b1, b2, b3 = st.columns(3)
-                            # [修改] 互動消耗時間
                             if b1.button("⚔️ 比武", key=f"d_{gen.name}", use_container_width=True):
-                                # 戰鬥本身會耗時，這裡不用 advance_time，讓戰鬥結束時扣
                                 st.session_state.combat_target = gen; st.session_state.combat_type = "duel"; st.rerun()
                             if b2.button("🗣️ 舌戰", key=f"db_{gen.name}", use_container_width=True):
                                 st.session_state.combat_target = gen; st.session_state.combat_type = "debate"; st.rerun()
                             if b3.button("💬 交談", key=f"t_{gen.name}", use_container_width=True):
-                                advance_time() # 交談耗時
+                                advance_time()
                                 msg = random.choice(gen.dialogues) if hasattr(gen, 'dialogues') and gen.dialogues else "......"
                                 st.session_state.last_talk[gen.name] = msg
                                 if random.random() < 0.3: gen.affection = min(100, gen.affection + 1)
@@ -550,12 +541,5 @@ with col_game:
                 if not nd: continue
                 icon = "🌲" if nd['type']=='wild' else "🏰"
                 if nd.get('region') == '海外': icon = "⛵"
-                # [修改] 移動消耗時間
                 if cols_nav[idx % 4].button(f"{icon} {nd['name']}", key=f"mv_{nid}", use_container_width=True):
-                    advance_time() # 移動耗時
-                    
-                    st.session_state.current_location_id = nid
-                    st.session_state.logs.append(f"前往 {nd['name']}")
-                    st.session_state.last_talk = {}
-                    # 註：simulate_world_turn 已經被整合進 advance_time 內的換日邏輯，所以這裡移除手動呼叫
-                    st.rerun()
+                    advance_time(); st.session_state.current_location_id = nid; st.session_state.logs.append(f"前往 {nd['name']}"); st.session_state.last_talk = {}; st.rerun()
