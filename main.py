@@ -89,7 +89,7 @@ if 'current_location_id' not in st.session_state:
     st.session_state.current_location_id = 51 
 
 if 'logs' not in st.session_state:
-    st.session_state.logs = ["系統啟動：戰鬥死鎖 Bug 已修復。"]
+    st.session_state.logs = ["系統啟動：全域裝備數值顯示已啟用。"]
 
 if 'combat_target' not in st.session_state:
     st.session_state.combat_target = None 
@@ -101,6 +101,22 @@ if 'last_talk' not in st.session_state:
 
 player = st.session_state.player
 game_time = st.session_state.game_time
+
+# --- [新增] Tooltip 生成器 ---
+def get_item_tooltip(item, html_mode=False):
+    """生成裝備詳細資訊，支援 HTML title 屬性與 Streamlit help 參數"""
+    attr_map = {"war": "武力", "int_": "智力", "ldr": "統御"}
+    attr_name = attr_map.get(item.attr, item.attr)
+    
+    # 數值顯示
+    val_str = f"+{item.value}"
+    
+    if html_mode:
+        # HTML 模式下，換行需要用 &#10;
+        return f"【{item.name}】&#10;部位: {item.type_}&#10;屬性: {attr_name} {val_str}&#10;說明: {item.description}"
+    else:
+        # Streamlit help 模式下，直接換行
+        return f"【{item.name}】\n部位: {item.type_}\n屬性: {attr_name} {val_str}\n說明: {item.description}"
 
 # --- 時間推進 helper 函數 ---
 def advance_time():
@@ -144,7 +160,9 @@ with st.sidebar.expander("🔥 技能 & 🎒 裝備", expanded=True):
         if item:
             color = "#FFD700" if item.is_artifact else "#A0A0A0" 
             icon = "🌟" if item.is_artifact else "🛡️"
-            st.markdown(f"<span style='color:{color}'>{icon} [{slot}] {item.name}</span>", unsafe_allow_html=True)
+            # [修改] 側邊欄裝備 Tooltip
+            tooltip = get_item_tooltip(item, html_mode=True)
+            st.markdown(f"<span style='color:{color}; cursor:help;' title='{tooltip}'>{icon} [{slot}] {item.name}</span>", unsafe_allow_html=True)
             has_gear = True
     if not has_gear: st.caption("無")
 
@@ -155,7 +173,6 @@ def get_condition_icon(val):
     return "⛈️", "cond-bad"
 
 def execute_turn(attacker, defender, skill=None):
-    # [暈眩邏輯修正] 這裡只負責判定和回傳訊息，不負責按鈕的禁用與否
     if attacker.status.get("stunned", False):
         attacker.status["stunned"] = False 
         return f"💫 {attacker.name} 暈眩中，無法行動！", 0
@@ -288,7 +305,8 @@ with col_game:
                 if item:
                     icon = "🌟" if item.is_artifact else "🛡️"
                     color = "#FFD700" if item.is_artifact else "#A0A0A0"
-                    tooltip = f"{item.name} (+{item.value} {item.attr})"
+                    # [修改] 敵方裝備 Tooltip
+                    tooltip = get_item_tooltip(item, html_mode=True)
                     enemy_gears.append(f"<span style='color:{color}; cursor:help;' title='{tooltip}'>{icon}{item.name}</span>")
             if enemy_gears:
                 gear_html = "&nbsp;".join(enemy_gears)
@@ -361,25 +379,19 @@ with col_game:
             act_col1, act_col2 = st.columns([1, 2])
             turn_display = f"<span class='turn-tag'>[第 {st.session_state.turn_count} 回合]</span>"
             
-            # [修復] 暈眩時按鈕處理
             is_stunned = player.status.get("stunned", False)
             
             with act_col1:
                 if is_stunned:
-                    # 如果暈眩，顯示跳過按鈕
                     if st.button("💫 暈眩中 (點擊跳過)", key="p_skip", use_container_width=True):
-                        # execute_turn 會處理暈眩的狀態解除與訊息回傳
                         log, _ = execute_turn(player, target, None)
                         st.session_state.combat_log_list.insert(0, f"{turn_display} {log}")
-                        st.session_state.combat_turn = 'enemy'
-                        st.rerun()
+                        st.session_state.combat_turn = 'enemy'; st.rerun()
                 else:
-                    # 正常攻擊
                     if st.button("⚔️ 普通攻擊", key="p_atk", use_container_width=True):
                         log, _ = execute_turn(player, target, None)
                         st.session_state.combat_log_list.insert(0, f"{turn_display} {log}")
-                        st.session_state.combat_turn = 'enemy'
-                        st.rerun()
+                        st.session_state.combat_turn = 'enemy'; st.rerun()
                         
                 if st.button("🏳️ 撤退", use_container_width=True):
                     st.session_state.combat_target = None; del st.session_state.turn_count
@@ -392,7 +404,6 @@ with col_game:
                     for idx, skill in enumerate(player.skills):
                         with s_cols[idx % 3]:
                             can_cast = player.current_mp >= skill.cost
-                            # 暈眩時禁用技能按鈕
                             label = f"{skill.name}\n(MP{skill.cost})"
                             if skill.effect == 'vamp': label += "🩸"
                             if skill.effect == 'stun': label += "💫"
@@ -462,7 +473,8 @@ with col_game:
                     if not player.inventory: st.caption("空")
                     for i, item in enumerate(player.inventory):
                         c1, c2 = st.columns([3, 1])
-                        c1.caption(f"{item.name}")
+                        # [修改] 背包物品 Tooltip (Wild)
+                        c1.caption(f"{item.name}", help=get_item_tooltip(item))
                         if c2.button("裝", key=f"w_{i}"):
                             player.equip(item); st.rerun()
 
@@ -481,12 +493,11 @@ with col_game:
                             gear_html_list = []
                             for slot, item in gen.equipment_slots.items():
                                 if item:
-                                    attr_map = {"war": "武力", "int_": "智力"}
-                                    attr_name = attr_map.get(item.attr, item.attr)
-                                    tooltip = f"【{item.name}】&#10;類型: {item.type_}&#10;屬性: {attr_name} +{item.value}&#10;說明: {item.description}"
-                                    if item.is_artifact: html = f"<span style='color:#FFD700; cursor:help; border-bottom:1px dotted #555;' title='{tooltip}'>🌟{item.name}</span>"
-                                    else: html = f"<span style='color:#B0B0B0; cursor:help;' title='{tooltip}'>🛡️{item.name}</span>"
-                                    gear_html_list.append(html)
+                                    icon = "🌟" if item.is_artifact else "🛡️"
+                                    color = "#FFD700" if item.is_artifact else "#A0A0A0"
+                                    # [修改] 武將列表裝備 Tooltip
+                                    tooltip = get_item_tooltip(item, html_mode=True)
+                                    gear_html_list.append(f"<span style='color:{color}; cursor:help;' title='{tooltip}'>{icon}{item.name}</span>")
                             
                             if gear_html_list:
                                 full_html = "&nbsp;&nbsp;".join(gear_html_list)
@@ -519,7 +530,8 @@ with col_game:
                     cols = st.columns(3)
                     for i, item in enumerate(equipment_db.common_gear[:6]):
                         with cols[i%3]:
-                            st.markdown(f"**{item.name}**")
+                            # [修改] 市集購買 Tooltip
+                            st.markdown(f"**{item.name}**", help=get_item_tooltip(item))
                             st.caption(f"💰{item.price}")
                             if st.button("買", key=f"b_{i}"):
                                 if player.gold >= item.price:
@@ -533,7 +545,9 @@ with col_game:
                             c1, c2, c3 = st.columns([3, 1, 1])
                             with c1:
                                 color = "#FFD700" if item.is_artifact else "#A0A0A0"
-                                st.markdown(f"<span style='color:{color}'>{item.name}</span>", unsafe_allow_html=True)
+                                # [修改] 市集出售 Tooltip
+                                tooltip = get_item_tooltip(item, html_mode=True)
+                                st.markdown(f"<span style='color:{color}' title='{tooltip}'>{item.name}</span>", unsafe_allow_html=True)
                             with c2: st.write(f"💰 {int(item.price * 0.5)}")
                             with c3:
                                 if st.button("賣出", key=f"sell_{i}"):
@@ -543,8 +557,10 @@ with col_game:
                 if not player.inventory: st.caption("空")
                 for i, item in enumerate(player.inventory):
                     c1, c2 = st.columns([3, 1])
-                    c1.caption(item.name)
-                    if c2.button("裝", key=f"c_{i}"): player.equip(item); st.rerun()
+                    # [修改] 城市背包 Tooltip
+                    c1.caption(item.name, help=get_item_tooltip(item))
+                    if c2.button("裝", key=f"c_{i}"):
+                        player.equip(item); st.rerun()
 
         st.divider()
         current_city = maps_db.cities.get(loc_id)
