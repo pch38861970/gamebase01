@@ -318,14 +318,51 @@ with col_game:
 
         st.divider()
 
+# (在 main.py 的 col_game 區塊內)
+
+        # 勝負判定
         if player.current_hp <= 0:
             st.error("💔 敗北")
-            st.session_state.logs.append(f"被 {target.name} 擊敗。")
-            player.gold = int(player.gold * 0.9)
             
+            # 1. 金錢懲罰
+            loss_gold = int(player.gold * 0.1)
+            player.gold = max(0, player.gold - loss_gold)
+            
+            # 2. 等級懲罰 (掉 5 等)
+            old_level = player.level
+            loss_level = 5
+            target_level = max(1, player.level - loss_level)
+            actual_lost = old_level - target_level
+            
+            log_msg = f"被 {target.name} 擊敗。損失 {loss_gold} 金。"
+            
+            if actual_lost > 0:
+                player.level = target_level
+                player.xp = 0
+                
+                # 倒扣屬性 (每級 3 點，與 models.py 的升級成長對應)
+                # 為了避免扣到變成負數，設個保底 10 點
+                player.war = max(10, player.war - (actual_lost * 3))
+                player.int_ = max(10, player.int_ - (actual_lost * 3))
+                
+                # 重算升級所需經驗 (還原公式)
+                player.max_xp = int(100 * (1.2 ** (player.level - 1)))
+                
+                log_msg += f" 💀元氣大傷！等級下降 {actual_lost} 級 (Lv.{old_level}→Lv.{player.level})。"
+            else:
+                log_msg += " (新手保護：等級未下降)"
+
+            st.session_state.logs.append(log_msg)
+            
+            # 戰鬥結束，耗時一次
             advance_time()
             
-            del st.session_state.combat_turn; del st.session_state.combat_log_list; del st.session_state.turn_count; st.session_state.combat_target = None
+            # 清理戰鬥狀態
+            del st.session_state.combat_turn
+            del st.session_state.combat_log_list
+            if 'turn_count' in st.session_state: del st.session_state.turn_count
+            st.session_state.combat_target = None
+            
             if st.button("復活"): st.rerun()
 
         elif target.current_hp <= 0:
@@ -575,3 +612,4 @@ with col_game:
                 if nd.get('region') == '海外': icon = "⛵"
                 if cols_nav[idx % 4].button(f"{icon} {nd['name']}", key=f"mv_{nid}", use_container_width=True):
                     advance_time(); st.session_state.current_location_id = nid; st.session_state.logs.append(f"前往 {nd['name']}"); st.session_state.last_talk = {}; st.rerun()
+
